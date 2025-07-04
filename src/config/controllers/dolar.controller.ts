@@ -1,6 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DolarService, DolarResponse } from '../services/dolar.service';
+import { ActualizarDolarDto } from '../dto/actualizar-dolar.dto';
 
 @ApiTags('Dólar')
 @Controller('dolar')
@@ -59,5 +60,12 @@ export class DolarController {
   @ApiResponse({ status: 500, description: 'Error interno del servidor' })
   async obtenerHistorial(@Query('limit') limit?: number): Promise<DolarResponse[]> {
     return this.dolarService.obtenerHistorialDolar(limit);
+  }
+  
+  @Post('cotizacion')
+  @ApiOperation({ summary: 'Crear cotización del dólar' })
+  @ApiBody({ type: ActualizarDolarDto })
+  async actualizarCotizacion(@Body() dolar: ActualizarDolarDto): Promise<DolarResponse> {
+    return this.dolarService.actualizarDolarManualmente(dolar);
   }
 } 
