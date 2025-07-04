@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfiguracionSistema } from '../entities/ConfiguracionSistema.entity';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
+import { ActualizarDolarDto } from '../dto/actualizar-dolar.dto';
 
 export interface DolarResponse {
   compra: number;
@@ -117,6 +118,31 @@ export class DolarService {
       this.logger.log('Dólar actualizado automáticamente');
     } catch (error) {
       this.logger.error('Error en actualización automática del dólar:', error.message);
+    }
+  }
+
+  async actualizarDolarManualmente(dto: ActualizarDolarDto): Promise<DolarResponse> {
+    try {
+      this.logger.log('Actualizando dólar manualmente...');
+      
+      const dolarData: DolarResponse = {
+        compra: dto.compra,
+        venta: dto.venta || dto.compra,
+        casa: dto.casa || 'Manual',
+        nombre: dto.nombre || 'Blue Manual',
+        moneda: dto.moneda || 'USD',
+        fechaActualizacion: new Date().toISOString(),
+      };
+
+      // Guardar en configuración del sistema
+      await this.guardarDolarEnConfiguracion(dolarData);
+
+      this.logger.log(`Dólar actualizado manualmente: Compra $${dolarData.compra}, Venta $${dolarData.venta}`);
+      
+      return dolarData;
+    } catch (error) {
+      this.logger.error('Error actualizando dólar manualmente:', error.message);
+      throw new Error('No se pudo actualizar la cotización del dólar');
     }
   }
 
