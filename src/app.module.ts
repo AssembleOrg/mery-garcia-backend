@@ -46,6 +46,12 @@ import { ConfigModule as SistemaConfigModule } from './config/config.module';
         synchronize: false,
         logging: false,
         autoLoadEntities: true,
+        
+        // Configuración de timezone para Argentina
+        extra: {
+          // Configurar timezone a nivel de conexión PostgreSQL
+          timezone: 'America/Argentina/Buenos_Aires',
+        },
       }),
     }),
 
@@ -65,6 +71,5 @@ export class AppModule implements OnModuleInit {
   constructor(private readonly config: ConfigService) { }
 
   onModuleInit() {
-    console.log('AppModule initialized — DB URL:', this.config.get('postgres.url'));
   }
 }

@@ -151,6 +151,9 @@ export class Comanda {
 
     @Column({ length: 500, nullable: true })
     observaciones?: string;
+    
+    @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+    precioDolar: number;
 
     /** Para optimistic locking */
     @VersionColumn()

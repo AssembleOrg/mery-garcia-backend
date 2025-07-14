@@ -15,6 +15,8 @@ import { Personal } from 'src/personal/entities/Personal.entity';
 import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { Prepago } from 'src/personal/entities/Prepago.entity';
 import { AuditoriaModule } from 'src/auditoria/auditoria.module';
+import { ConfiguracionSistema } from 'src/config/entities/ConfiguracionSistema.entity';
+import { ConfigModule } from 'src/config/config.module';
 
 @Module({
   imports: [
@@ -26,9 +28,11 @@ import { AuditoriaModule } from 'src/auditoria/auditoria.module';
       Cliente, 
       Personal, 
       MetodoPago, 
-      Prepago
+      Prepago,
+      ConfiguracionSistema,
     ]),
     AuditoriaModule,
+    ConfigModule,
   ],
   controllers: [
     ComandaController,

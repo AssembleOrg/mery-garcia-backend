@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { Comanda } from '../../comanda/entities/Comanda.entity';
 import { PrepagoGuardado } from '../../personal/entities/PrepagoGuardado.entity';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 @Entity({ name: 'clientes' })
 export class Cliente {
@@ -34,13 +35,13 @@ export class Cliente {
     @Column({ default: '' })
     email: string;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
+    @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
 
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 
     @OneToMany(() => PrepagoGuardado, pg => pg.cliente, {

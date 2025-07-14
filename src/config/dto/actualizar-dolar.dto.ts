@@ -49,4 +49,13 @@ export class ActualizarDolarDto {
   @IsString()
   @IsOptional()
   moneda?: string;
+
+  @ApiProperty({
+    description: 'Observaciones sobre la cotización',
+    example: 'Cotización ingresada manualmente por el administrador',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  observaciones?: string;
 } 

@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { ItemComanda } from '../../comanda/entities/ItemComanda.entity';
 import { Comanda } from '../../comanda/entities/Comanda.entity';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 @Entity({ name: 'comisiones' })
 export class Comision {
@@ -71,12 +72,12 @@ export class Comision {
     @ManyToOne(() => ItemComanda, { nullable: true })
     itemComanda?: ItemComanda;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
+    @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
 
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 }

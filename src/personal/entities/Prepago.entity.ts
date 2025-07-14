@@ -11,6 +11,7 @@ import {
     UpdateDateColumn,
     DeleteDateColumn,
 } from 'typeorm';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 
 
@@ -25,19 +26,19 @@ export class Prepago {
     @Column({ type: 'enum', enum: TipoMoneda })
     moneda: TipoMoneda;
 
-    @Column({ type: 'timestamptz' })
+    @Column({ type: 'timestamptz', transformer: TimezoneTransformer })
     fecha: Date;
 
     @Column({ type: 'text', nullable: true })
     observaciones?: string;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
+    @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
 
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 
     @OneToOne(() => Comanda, comanda => comanda.prepago, {

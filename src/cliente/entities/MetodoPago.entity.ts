@@ -10,6 +10,7 @@ import {
     UpdateDateColumn,
     DeleteDateColumn,
 } from 'typeorm';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 
 
@@ -64,12 +65,12 @@ export class MetodoPago {
     })
     comanda: Comanda;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
+    @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
 
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 }

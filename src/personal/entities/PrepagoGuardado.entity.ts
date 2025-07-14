@@ -12,6 +12,7 @@ import {
 import { Cliente } from '../../cliente/entities/Cliente.entity';
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 
 
@@ -26,10 +27,10 @@ export class PrepagoGuardado {
   @Column({ type: 'enum', enum: TipoMoneda })
   moneda: TipoMoneda;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   fechaCreacion: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
   fechaVencimiento?: Date;
 
   @Column({ type: 'enum', enum: EstadoPrepago })
@@ -38,7 +39,7 @@ export class PrepagoGuardado {
   @Column({ default: '' })
   observaciones: string;
 
-  @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+  @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
   deletedAt?: Date;
 
   @ManyToOne(() => Cliente, cliente => cliente.prepagosGuardados, {

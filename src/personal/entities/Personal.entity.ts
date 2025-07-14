@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 @Entity({ name: 'personal' })
 export class Personal {
@@ -45,23 +46,23 @@ export class Personal {
         enum: UnidadNegocio,
         enumName: 'unidad_negocio_enum',
         array: true,
-        default: () => 'ARRAY[\'tattoo\']::unidad_negocio_enum[]',
+        default: () => "ARRAY['tattoo']::unidad_negocio_enum[]",
     })
     unidadesDisponibles: UnidadNegocio[];
 
     @Column({ nullable: true })
     telefono?: string;
 
-    @Column({ type: 'timestamptz' })
+    @Column({ type: 'timestamptz', transformer: TimezoneTransformer })
     fechaIngreso: Date;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
+    @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
 
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
+    @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 
     @OneToMany(() => Comanda, c => c.personalPrincipal)

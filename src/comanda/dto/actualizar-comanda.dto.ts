@@ -219,4 +219,14 @@ export class ActualizarComandaDto {
   @IsString()
   @MaxLength(500)
   observaciones?: string;
+
+  @ApiPropertyOptional({ 
+    description: 'Precio en dólares',
+    minimum: 0,
+    example: 100.00 
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  precioDolar?: number;
 } 

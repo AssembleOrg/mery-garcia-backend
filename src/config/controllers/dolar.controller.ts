@@ -30,6 +30,29 @@ export class DolarController {
     return this.dolarService.obtenerDolarActual();
   }
 
+  @Get('ultimo')
+  @ApiOperation({ summary: 'Obtener el último update de dólar guardado en el sistema' })
+  @ApiResponse({
+    status: 200,
+    description: 'Último update de dólar obtenido exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        compra: { type: 'number', example: 1190 },
+        venta: { type: 'number', example: 1210 },
+        casa: { type: 'string', example: 'blue' },
+        nombre: { type: 'string', example: 'Blue' },
+        moneda: { type: 'string', example: 'USD' },
+        fechaActualizacion: { type: 'string', example: '2025-06-29T20:57:00.000Z' },
+      },
+    },
+  })
+  @ApiResponse({ status: 404, description: 'No se encontró ningún update de dólar' })
+  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+  async obtenerUltimoUpdate(): Promise<DolarResponse | null> {
+    return this.dolarService.obtenerUltimoUpdatePorFecha();
+  }
+
   @Get('historial')
   @ApiOperation({ summary: 'Obtener historial de cotizaciones del dólar' })
   @ApiQuery({
@@ -58,6 +81,7 @@ export class DolarController {
     },
   })
   @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+  @ApiResponse({ status: 404, description: 'No se encontró ningún update de dólar' })
   async obtenerHistorial(@Query('limit') limit?: number): Promise<DolarResponse[]> {
     return this.dolarService.obtenerHistorialDolar(limit);
   }

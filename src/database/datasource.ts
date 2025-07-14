@@ -25,10 +25,16 @@ export default new DataSource({
   synchronize: false,
   logging: false,
 
+  // Configurar timezone a nivel de conexión PostgreSQL
+  extra: {
+    timezone: '-c timezone=America/Argentina/Buenos_Aires',
+  },
+
   // Si necesitas SSL en producción:
   // extra: {
   //   ssl: {
   //     rejectUnauthorized: false,
   //   },
+  //   timezone: 'America/Argentina/Buenos_Aires',
   // },
 });

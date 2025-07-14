@@ -23,6 +23,8 @@ import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
 import { Caja } from 'src/enums/Caja.enum';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import * as ExcelJS from 'exceljs';
+import { ConfiguracionSistema } from 'src/config/entities/ConfiguracionSistema.entity';
+import { DolarService } from 'src/config/services/dolar.service';
 
 export interface ComandaResponse {
   comanda: Comanda;
@@ -84,6 +86,7 @@ export class ComandaService {
     private prepagoRepository: Repository<Prepago>,
     private dataSource: DataSource,
     private auditoriaService: AuditoriaService,
+    private dolarService: DolarService,
   ) {}
 
   async crearComanda(
@@ -102,6 +105,12 @@ export class ComandaService {
         where: { numero: crearComandaDto.numero },
         withDeleted: true,
       });
+
+      const dolar = await this.dolarService.obtenerUltimoDolarGuardado();
+
+      if (!dolar) {
+        throw new BadRequestException('No se encontró el precio del dólar');
+      }
 
       if (comandaExistente) {
         throw new BadRequestException(`Ya existe una comanda con el número ${crearComandaDto.numero}`);
@@ -150,6 +159,7 @@ export class ComandaService {
         estado: crearComandaDto.estado || EstadoComanda.PENDIENTE,
         tipo: tipoComanda,
         observaciones: crearComandaDto.observaciones,
+        precioDolar: dolar.compra,
       });
 
       const comandaGuardada = await queryRunner.manager.save(Comanda, comanda);
@@ -381,6 +391,7 @@ export class ComandaService {
       if (actualizarComandaDto.enCaja) comanda.enCaja = actualizarComandaDto.enCaja;
       if (actualizarComandaDto.estado) comanda.estado = actualizarComandaDto.estado;
       if (actualizarComandaDto.observaciones !== undefined) comanda.observaciones = actualizarComandaDto.observaciones;
+      if (actualizarComandaDto.precioDolar) comanda.precioDolar = actualizarComandaDto.precioDolar;
 
       // Actualizar relaciones si se proporcionan
       if (actualizarComandaDto.clienteId) {
@@ -462,6 +473,7 @@ export class ComandaService {
       if (actualizarComandaDto.totalRecargos !== undefined) comanda.totalRecargos = actualizarComandaDto.totalRecargos;
       if (actualizarComandaDto.totalPrepago !== undefined) comanda.totalPrepago = actualizarComandaDto.totalPrepago;
       if (actualizarComandaDto.totalFinal !== undefined) comanda.totalFinal = actualizarComandaDto.totalFinal;
+      if (actualizarComandaDto.precioDolar !== undefined) comanda.precioDolar = actualizarComandaDto.precioDolar;
 
       const comandaActualizada = await queryRunner.manager.save(Comanda, comanda);
 

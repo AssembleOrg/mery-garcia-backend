@@ -9,6 +9,7 @@ import {
 import { Personal } from 'src/personal/entities/Personal.entity';
 import { TipoAccion } from 'src/enums/TipoAccion.enum';
 import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 
 
 
@@ -55,6 +56,6 @@ export class Auditoria {
     @JoinColumn({ name: 'usuario_id' })
     usuario: Personal;
 
-    @CreateDateColumn({ type: 'timestamptz' })
+    @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 } 

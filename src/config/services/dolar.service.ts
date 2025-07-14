@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfiguracionSistema } from '../entities/ConfiguracionSistema.entity';
+import { CotizacionDolar } from '../entities/CotizacionDolar.entity';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import { ActualizarDolarDto } from '../dto/actualizar-dolar.dto';
@@ -12,7 +13,8 @@ export interface DolarResponse {
   casa: string;
   nombre: string;
   moneda: string;
-  fechaActualizacion: string;
+  fechaActualizacion?: string;
+  fechaCreacion?: string;
 }
 
 @Injectable()
@@ -23,122 +25,179 @@ export class DolarService {
   constructor(
     @InjectRepository(ConfiguracionSistema)
     private configuracionRepository: Repository<ConfiguracionSistema>,
+    @InjectRepository(CotizacionDolar)
+    private cotizacionDolarRepository: Repository<CotizacionDolar>,
   ) {}
 
   async obtenerDolarActual(): Promise<DolarResponse> {
     try {
       this.logger.log('Consultando cotización del dólar blue...');
-      
+
       const response = await axios.get<DolarResponse>(this.API_URL);
       const dolarData = response.data;
 
       // Guardar en configuración del sistema
       await this.guardarDolarEnConfiguracion(dolarData);
 
-      this.logger.log(`Dólar blue actualizado: Compra $${dolarData.compra}, Venta $${dolarData.venta}`);
-      
+      this.logger.log(
+        `Dólar blue actualizado: Compra $${dolarData.compra}, Venta $${dolarData.venta}`,
+      );
+
       return dolarData;
     } catch (error) {
       this.logger.error('Error consultando dólar blue:', error.message);
-      
-      // Si falla la API, intentar obtener el último valor guardado
-      const ultimoValor = await this.obtenerUltimoDolarGuardado();
-      if (ultimoValor) {
-        this.logger.warn('Usando último valor guardado del dólar');
-        return ultimoValor;
-      }
-      
+
       throw new Error('No se pudo obtener la cotización del dólar');
     }
   }
 
-  private async guardarDolarEnConfiguracion(dolarData: DolarResponse): Promise<void> {
+  private async guardarDolarEnConfiguracion(
+    dolarData: DolarResponse,
+  ): Promise<void> {
     try {
-      const configuracion = await this.configuracionRepository.findOne({
-        where: { clave: 'dolar_blue' },
-      });
-
-      const valor = JSON.stringify({
+      const cotizacionConfiguracion =
+        await this.configuracionRepository.findOne({
+          where: { clave: 'dolar_blue' },
+        });
+      if (cotizacionConfiguracion) {
+        await this.configuracionRepository.update(cotizacionConfiguracion.id, {
+          valor: JSON.stringify(dolarData),
+        });
+      } else {
+        const nuevaConfiguracion = this.configuracionRepository.create({
+          clave: 'dolar_blue',
+          valor: JSON.stringify(dolarData),
+        });
+        await this.configuracionRepository.save(nuevaConfiguracion);
+      }
+      // Guardar en la nueva tabla de cotizaciones
+      const cotizacion = this.cotizacionDolarRepository.create({
         compra: dolarData.compra,
         venta: dolarData.venta,
         casa: dolarData.casa,
         nombre: dolarData.nombre,
         moneda: dolarData.moneda,
-        fechaActualizacion: dolarData.fechaActualizacion,
-        fechaConsulta: new Date().toISOString(),
+        fechaActualizacion: new Date(dolarData.fechaActualizacion!), // TypeORM manejará el timezone automáticamente
+        fuente: 'API',
+        observaciones: 'Cotización obtenida automáticamente de dolarapi.com',
+        // createdAt y updatedAt son manejados automáticamente por TypeORM con timezone AR
       });
 
-      if (configuracion) {
-        configuracion.valor = valor;
-        await this.configuracionRepository.save(configuracion);
-      } else {
-        const nuevaConfig = this.configuracionRepository.create({
-          clave: 'dolar_blue',
-          valor,
-          descripcion: 'Cotización del dólar blue obtenida de dolarapi.com',
-          activo: true,
-        });
-        await this.configuracionRepository.save(nuevaConfig);
-      }
+      await this.cotizacionDolarRepository.save(cotizacion); 
+
+      this.logger.log('Cotización de dólar guardada en historial');
     } catch (error) {
-      this.logger.error('Error guardando dólar en configuración:', error.message);
+      this.logger.error('Error guardando cotización de dólar:', error.message);
+      throw new Error('No se pudo guardar la cotización del dólar');
     }
   }
 
-  private async obtenerUltimoDolarGuardado(): Promise<DolarResponse | null> {
+  async obtenerUltimoDolarGuardado(): Promise<DolarResponse | null> {
     try {
-      const configuracion = await this.configuracionRepository.findOne({
-        where: { clave: 'dolar_blue' },
+      const ultimaCotizacion = await this.cotizacionDolarRepository.findOne({
+        where: {},
+        order: { fechaActualizacion: 'DESC' },
       });
 
-      if (configuracion) {
-        const valor = JSON.parse(configuracion.valor);
-        return {
-          compra: valor.compra,
-          venta: valor.venta,
-          casa: valor.casa,
-          nombre: valor.nombre,
-          moneda: valor.moneda,
-          fechaActualizacion: valor.fechaActualizacion,
-        };
+      if (!ultimaCotizacion) {
+        throw new NotFoundException(
+          'No se encontró la última cotización del dólar',
+        );
       }
+
+      return {
+        compra: ultimaCotizacion.compra,
+        venta: ultimaCotizacion.venta,
+        casa: ultimaCotizacion.casa,
+        nombre: ultimaCotizacion.nombre,
+        moneda: ultimaCotizacion.moneda,
+        fechaActualizacion: ultimaCotizacion.fechaActualizacion.toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error obteniendo último dólar guardado:', error.message);
+      this.logger.error(
+        'Error obteniendo último dólar guardado:2',
+        error.message,
+      );
+      throw new Error('No se pudo obtener la última cotización del dólar');
     }
-    
-    return null;
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
-  async actualizarDolarAutomaticamente(): Promise<void> {
-    this.logger.log('Ejecutando actualización automática del dólar...');
-    
+  async obtenerUltimoUpdatePorFecha(): Promise<DolarResponse | null> {
     try {
-      await this.obtenerDolarActual();
-      this.logger.log('Dólar actualizado automáticamente');
+      const ultimaCotizacion = await this.cotizacionDolarRepository.findOne({
+        order: { createdAt: 'DESC' },
+        where: {},
+      });
+      if (!ultimaCotizacion) {
+        throw new NotFoundException(
+          'No se encontró la última cotización del dólar',
+        );
+      }
+
+      return {
+        compra: ultimaCotizacion.compra,
+        venta: ultimaCotizacion.venta,
+        casa: ultimaCotizacion.casa,
+        nombre: ultimaCotizacion.nombre,
+        moneda: ultimaCotizacion.moneda,
+        fechaActualizacion: ultimaCotizacion.fechaActualizacion.toISOString(),
+      };
     } catch (error) {
-      this.logger.error('Error en actualización automática del dólar:', error.message);
+      this.logger.error(
+        'Error obteniendo último update de dólar por fecha:',
+        error.message,
+      );
+      throw new Error('No se pudo obtener la última cotización del dólar');
     }
   }
 
-  async actualizarDolarManualmente(dto: ActualizarDolarDto): Promise<DolarResponse> {
+  // @Cron(CronExpression.EVERY_HOUR)
+  // async actualizarDolarAutomaticamente(): Promise<void> {
+  //   this.logger.log('Ejecutando actualización automática del dólar...');
+
+  //   try {
+  //     await this.obtenerDolarActual();
+  //     this.logger.log('Dólar actualizado automáticamente');
+  //   } catch (error) {
+  //     this.logger.error('Error en actualización automática del dólar:', error.message);
+  //   }
+  // }
+
+  async actualizarDolarManualmente(
+    dto: ActualizarDolarDto,
+  ): Promise<DolarResponse> {
     try {
       this.logger.log('Actualizando dólar manualmente...');
-      
+
       const dolarData: DolarResponse = {
         compra: dto.compra,
         venta: dto.venta || dto.compra,
         casa: dto.casa || 'Manual',
         nombre: dto.nombre || 'Blue Manual',
         moneda: dto.moneda || 'USD',
-        fechaActualizacion: new Date().toISOString(),
+        fechaActualizacion: new Date().toLocaleString('es-AR', {
+          timeZone: 'America/Argentina/Buenos_Aires',
+        }),
       };
 
-      // Guardar en configuración del sistema
-      await this.guardarDolarEnConfiguracion(dolarData);
+      // Guardar en la nueva tabla de cotizaciones
+      const cotizacion = this.cotizacionDolarRepository.create({
+        compra: dolarData.compra,
+        venta: dolarData.venta,
+        casa: dolarData.casa,
+        nombre: dolarData.nombre,
+        moneda: dolarData.moneda,
+        fechaActualizacion: new Date(),
+        fuente: 'MANUAL',
+        observaciones: dto.observaciones || 'Cotización ingresada manualmente',
+      });
 
-      this.logger.log(`Dólar actualizado manualmente: Compra $${dolarData.compra}, Venta $${dolarData.venta}`);
-      
+      await this.cotizacionDolarRepository.save(cotizacion);
+
+      this.logger.log(
+        `Dólar actualizado manualmente: Compra $${dolarData.compra}, Venta $${dolarData.venta}`,
+      );
+
       return dolarData;
     } catch (error) {
       this.logger.error('Error actualizando dólar manualmente:', error.message);
@@ -148,26 +207,24 @@ export class DolarService {
 
   async obtenerHistorialDolar(limit = 10): Promise<DolarResponse[]> {
     try {
-      const configuraciones = await this.configuracionRepository.find({
-        where: { clave: 'dolar_blue' },
-        order: { updatedAt: 'DESC' },
+      const cotizaciones = await this.cotizacionDolarRepository.find({
+        order: { createdAt: 'DESC' },
         take: limit,
       });
 
-      return configuraciones.map(config => {
-        const valor = JSON.parse(config.valor);
-        return {
-          compra: valor.compra,
-          venta: valor.venta,
-          casa: valor.casa,
-          nombre: valor.nombre,
-          moneda: valor.moneda,
-          fechaActualizacion: valor.fechaActualizacion,
-        };
-      });
+      this.logger.log(`Cotizaciones encontradas: ${cotizaciones.length}`);
+
+      return cotizaciones.map((cotizacion) => ({
+        compra: cotizacion.compra,
+        venta: cotizacion.venta,
+        casa: cotizacion.casa,
+        nombre: cotizacion.nombre,
+        moneda: cotizacion.moneda,
+        fechaCreacion: cotizacion.createdAt.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' }),
+      }));
     } catch (error) {
       this.logger.error('Error obteniendo historial del dólar:', error.message);
       return [];
     }
   }
-} 
+}
