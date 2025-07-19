@@ -56,6 +56,9 @@ export class Auditoria {
     @JoinColumn({ name: 'usuario_id' })
     usuario: Personal;
 
+    @Column({ type: 'uuid', nullable: true })
+    entidadId?: string;
+
     @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;
 } 

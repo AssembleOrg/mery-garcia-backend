@@ -1,126 +1,13 @@
-import { IsOptional, IsEnum, IsDateString, IsString, IsUUID, IsNumber, Min, Max } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsNumber, Min, Max, IsEnum, IsUUID, IsDateString, IsBoolean } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
-import { Caja } from 'src/enums/Caja.enum';
-import { EstadoComanda } from 'src/comanda/entities/Comanda.entity';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { TipoDeComanda, EstadoDeComanda } from '../entities/Comanda.entity';
 
 export class FiltrarComandasDto {
-  @ApiPropertyOptional({ 
-    description: 'Número de comanda para búsqueda exacta',
-    example: 'CMD-2024-001' 
-  })
-  @IsOptional()
-  @IsString()
-  numero?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Fecha de inicio para filtrar comandas',
-    example: '2024-01-01T00:00:00Z' 
-  })
-  @IsOptional()
-  @IsDateString()
-  fechaInicio?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Fecha de fin para filtrar comandas',
-    example: '2024-12-31T23:59:59Z' 
-  })
-  @IsOptional()
-  @IsDateString()
-  fechaFin?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Unidad de negocio',
-    enum: UnidadNegocio 
-  })
-  @IsOptional()
-  @IsEnum(UnidadNegocio)
-  unidadNegocio?: UnidadNegocio;
-
-  @ApiPropertyOptional({ 
-    description: 'Caja asignada',
-    enum: Caja 
-  })
-  @IsOptional()
-  @IsEnum(Caja)
-  enCaja?: Caja;
-
-  @ApiPropertyOptional({ 
-    description: 'ID del cliente',
-    example: 'uuid-del-cliente' 
-  })
-  @IsOptional()
-  @IsUUID()
-  clienteId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'ID del personal principal',
-    example: 'uuid-del-personal' 
-  })
-  @IsOptional()
-  @IsUUID()
-  personalPrincipalId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Estado de la comanda',
-    enum: EstadoComanda 
-  })
-  @IsOptional()
-  @IsEnum(EstadoComanda)
-  estado?: EstadoComanda;
-
-  @ApiPropertyOptional({ 
-    description: 'ID del tipo de comanda',
-    example: 'uuid-del-tipo-comanda' 
-  })
-  @IsOptional()
-  @IsUUID()
-  tipoId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'ID del tipo de item de comanda',
-    example: 'uuid-del-tipo-item'
-  })
-  @IsOptional()
-  @IsUUID()
-  tipoItemId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Monto mínimo para filtrar por total final',
-    minimum: 0,
-    example: 100 
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  montoMinimo?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Monto máximo para filtrar por total final',
-    minimum: 0,
-    example: 1000 
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  montoMaximo?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Término de búsqueda en observaciones',
-    example: 'especial' 
-  })
-  @IsOptional()
-  @IsString()
-  observaciones?: string;
-
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Número de página',
+    example: 1,
     minimum: 1,
-    default: 1,
-    example: 1 
   })
   @IsOptional()
   @Type(() => Number)
@@ -128,36 +15,101 @@ export class FiltrarComandasDto {
   @Min(1)
   page?: number = 1;
 
-  @ApiPropertyOptional({ 
-    description: 'Cantidad de elementos por página',
+  @ApiPropertyOptional({
+    description: 'Número de elementos por página',
+    example: 10,
     minimum: 1,
     maximum: 100,
-    default: 20,
-    example: 20 
   })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
   @Max(100)
-  limit?: number = 20;
+  limit?: number = 10;
 
-  @ApiPropertyOptional({ 
-    description: 'Campo para ordenar',
-    example: 'fecha',
-    enum: ['fecha', 'numero', 'totalFinal', 'estado', 'createdAt'] 
+  @ApiPropertyOptional({
+    description: 'Término de búsqueda para número de comanda',
+    example: 'COM-2024',
   })
   @IsOptional()
   @IsString()
-  orderBy?: string = 'fecha';
+  search?: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Dirección del ordenamiento',
+  @ApiPropertyOptional({
+    description: 'Tipo de comanda',
+    enum: TipoDeComanda,
+  })
+  @IsOptional()
+  @IsEnum(TipoDeComanda)
+  tipoDeComanda?: TipoDeComanda;
+
+  @ApiPropertyOptional({
+    description: 'Incluir traspasadas',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true')
+  incluirTraspasadas?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Estado de la comanda',
+    enum: EstadoDeComanda,
+  })
+  @IsOptional()
+  @IsEnum(EstadoDeComanda)
+  estadoDeComanda?: EstadoDeComanda;
+
+  @ApiPropertyOptional({
+    description: 'ID del cliente',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+
+
+  @ApiPropertyOptional({
+    description: 'ID del personal que creó la comanda',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID()
+  creadoPorId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fecha desde',
+    example: '2024-07-01T00:00:00.000Z',
+  })
+  @IsOptional()
+  @IsDateString()
+  fechaDesde?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fecha hasta',
+    example: '2024-07-31T23:59:59.000Z',
+  })
+  @IsOptional()
+  @IsDateString()
+  fechaHasta?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ordenar por campo',
+    example: 'createdAt',
+    enum: ['createdAt', 'numero', 'tipoDeComanda', 'estadoDeComanda'],
+  })
+  @IsOptional()
+  @IsString()
+  orderBy?: string = 'createdAt';
+
+  @ApiPropertyOptional({
+    description: 'Orden de clasificación',
     example: 'DESC',
-    enum: ['ASC', 'DESC'] 
+    enum: ['ASC', 'DESC'],
   })
   @IsOptional()
   @IsString()
-  @Transform(({ value }) => value?.toUpperCase())
-  orderDirection?: 'ASC' | 'DESC' = 'DESC';
+  order?: 'ASC' | 'DESC' = 'DESC';
 } 

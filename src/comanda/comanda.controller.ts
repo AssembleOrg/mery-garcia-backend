@@ -8,10 +8,9 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
-  ParseIntPipe,
-  DefaultValuePipe,
-  Res,
+  ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +20,6 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import { Response } from 'express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
@@ -30,10 +28,12 @@ import { ComandaService } from './comanda.service';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
 import { ActualizarComandaDto } from './dto/actualizar-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
-import { EstadoComanda } from './entities/Comanda.entity';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
+import { EstadoDeComanda } from './entities/Comanda.entity';
+import { Comanda } from './entities/Comanda.entity';
+import { CrearEgresoDto } from './dto/crear-egreso.dto';
+import { Egreso } from './entities/egreso.entity';
 
-@ApiTags('comandas')
+@ApiTags('Comandas')
 @Controller('comandas')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
@@ -41,339 +41,251 @@ export class ComandaController {
   constructor(private readonly comandaService: ComandaService) {}
 
   @Post()
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiOperation({ 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
     summary: 'Crear una nueva comanda',
-    description: 'Crea una nueva comanda con sus items, cliente, personal y métodos de pago'
+    description: 'Crea una nueva comanda con todos sus datos',
   })
-  @ApiResponse({ 
-    status: 201, 
+  @ApiResponse({
+    status: 201,
     description: 'Comanda creada exitosamente',
-    schema: {
-      type: 'object',
-      properties: {
-        comanda: { type: 'object' },
-        totalItems: { type: 'number' },
-        totalCalculado: { type: 'number' }
-      }
-    }
+    type: Comanda,
   })
-  @ApiResponse({ status: 400, description: 'Datos inválidos o comanda duplicada' })
-  @ApiResponse({ status: 404, description: 'Cliente o personal no encontrado' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async crearComanda(
-    @Body() crearComandaDto: CrearComandaDto,
-    @Request() req,
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 404, description: 'Cliente, trabajador o personal no encontrado' })
+  async crear(@Body() crearComandaDto: CrearComandaDto): Promise<Comanda> {
+    // console.log(JSON.stringify(crearComandaDto, null, 2));
+    // return new  Comanda();
+    return await this.comandaService.crear(crearComandaDto);
+  }
 
-    return await this.comandaService.crearComanda(
-      crearComandaDto,
-      req.user,
-      ipAddress,
-      userAgent,
-    );
+  @Post('egreso')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Crear un egreso',
+    description: 'Crea un egreso con todos sus datos',
+  })
+  async crearComandaEgreso(@Body() crearEgresoDto: CrearEgresoDto): Promise<Comanda> {
+    return await this.comandaService.crearEgreso(crearEgresoDto);
+  }
+
+  @Get('egreso/ultimo')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener el último egreso',
+    description: 'Obtiene el último egreso creado',
+  })
+  async obtenerUltimoEgreso(): Promise<Comanda | null> {
+    return await this.comandaService.getLastComandaEgreso();
   }
 
   @Get()
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiOperation({ 
-    summary: 'Obtener comandas con filtros',
-    description: 'Obtiene una lista paginada de comandas con filtros opcionales'
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener todas las comandas',
+    description: 'Obtiene una lista de todas las comandas sin paginación',
   })
-  @ApiResponse({ 
-    status: 200, 
+  @ApiResponse({
+    status: 200,
+    description: 'Comandas obtenidas exitosamente',
+    type: [Comanda],
+  })
+  async obtenerTodos(): Promise<Comanda[]> {
+    return await this.comandaService.obtenerTodos();
+  }
+
+  @Get('paginados')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener comandas con paginación',
+    description: 'Obtiene una lista paginada de comandas con filtros opcionales',
+  })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Elementos por página', example: 10 })
+  @ApiQuery({ name: 'search', required: false, type: String, description: 'Término de búsqueda', example: 'COM-2024' })
+  @ApiQuery({ name: 'tipoDeComanda', required: false, enum: ['INGRESO', 'EGRESO'], description: 'Tipo de comanda' })
+  @ApiQuery({ name: 'estadoDeComanda', required: false, enum: ['PENDIENTE', 'PAGADA', 'CANCELADA', 'FINALIZADA', 'TRASPASADA'], description: 'Estado de la comanda' })
+  @ApiQuery({ name: 'clienteId', required: false, type: String, description: 'ID del cliente' })
+  @ApiQuery({ name: 'trabajadorId', required: false, type: String, description: 'ID del trabajador' })
+  @ApiQuery({ name: 'creadoPorId', required: false, type: String, description: 'ID del personal que creó la comanda' })
+  @ApiQuery({ name: 'fechaDesde', required: false, type: String, description: 'Fecha desde', example: '2024-07-01T00:00:00.000Z' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha hasta', example: '2024-07-31T23:59:59.000Z' })
+  @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Campo de ordenamiento', example: 'createdAt' })
+  @ApiQuery({ name: 'order', required: false, enum: ['ASC', 'DESC'], description: 'Orden de clasificación' })
+  @ApiResponse({
+    status: 200,
     description: 'Comandas obtenidas exitosamente',
     schema: {
       type: 'object',
       properties: {
-        comandas: { type: 'array' },
-        total: { type: 'number' },
-        page: { type: 'number' },
-        limit: { type: 'number' },
-        totalPages: { type: 'number' }
-      }
-    }
+        data: { type: 'array', items: { $ref: '#/components/schemas/Comanda' } },
+        meta: {
+          type: 'object',
+          properties: {
+            page: { type: 'number' },
+            limit: { type: 'number' },
+            total: { type: 'number' },
+            totalPages: { type: 'number' },
+            hasNextPage: { type: 'boolean' },
+            hasPreviousPage: { type: 'boolean' },
+          },
+        },
+      },
+    },
   })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async obtenerComandas(@Query() filtros: FiltrarComandasDto) {
-    return await this.comandaService.filtrarComandas(filtros);
+  async obtenerConPaginacion(@Query() filtros: FiltrarComandasDto) {
+    return await this.comandaService.obtenerConPaginacion(filtros);
+  }
+
+  @Get('resumen-caja-chica')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener resumen de caja chica',
+    description: 'Obtiene un resumen de la caja chica',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen de caja chica obtenido exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        totalCompletados: { type: 'number' },
+        totalPendientes: { type: 'number' },
+        montoNetoUSD: { type: 'number' },
+        montoNetoARS: { type: 'number' },
+        montoDisponibleTrasladoUSD: { type: 'number' },
+        montoDisponibleTrasladoARS: { type: 'number' },
+        totalIngresosUSD: { type: 'number' },
+        totalIngresosARS: { type: 'number' },
+        totalEgresosUSD: { type: 'number' },
+        totalEgresosARS: { type: 'number' },
+        comandasValidadasIds: { type: 'array', items: { type: 'string' } },
+      },
+    },
+  })
+  @ApiQuery({ name: 'fechaDesde', required: false, type: String, description: 'Fecha desde', example: '2024-07-01T00:00:00.000Z' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha hasta', example: '2024-07-31T23:59:59.000Z' })
+  async obtenerResumenCajaChica(@Query() filtros: { fechaDesde: string, fechaHasta: string }): Promise<{
+    totalCompletados: number;
+    totalPendientes: number;
+    montoNetoUSD: number;
+    montoNetoARS: number;
+    montoDisponibleTrasladoUSD: number;
+    montoDisponibleTrasladoARS: number; 
+    totalIngresosUSD: number;
+    totalIngresosARS: number;
+    totalEgresosUSD: number;
+    totalEgresosARS: number;
+    comandasValidadasIds: string[];
+  }> {
+    return await this.comandaService.getResumenCajaChica(filtros);
+  }
+
+  @Get('ultima')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener la última comanda',
+    description: 'Obtiene la última comanda creada',
+  })
+  async obtenerUltimaComanda(): Promise<Comanda | null> {
+    return await this.comandaService.getLastComanda();
+  }
+
+  @Get('existe/:numero')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Verificar si existe una comanda',
+    description: 'Verifica si una comanda existe en la base de datos',
+  })
+  async existeComanda(@Param('numero') numero: string): Promise<boolean> {
+    return await this.comandaService.existeComanda(numero);
   }
 
   @Get(':id')
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiParam({ name: 'id', description: 'ID de la comanda', example: 'uuid-de-la-comanda' })
-  @ApiOperation({ 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
     summary: 'Obtener comanda por ID',
-    description: 'Obtiene una comanda específica con todas sus relaciones'
+    description: 'Obtiene una comanda específica por su ID',
   })
-  @ApiResponse({ status: 200, description: 'Comanda obtenida exitosamente' })
-  @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async obtenerComanda(@Param('id') id: string) {
-    return await this.comandaService.obtenerComanda(id);
-  }
-
-  @Get('numero/:numero')
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiParam({ name: 'numero', description: 'Número de la comanda', example: 'CMD-2024-001' })
-  @ApiOperation({ 
-    summary: 'Obtener comanda por número',
-    description: 'Obtiene una comanda específica por su número único'
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({
+    status: 200,
+    description: 'Comanda obtenida exitosamente',
+    type: Comanda,
   })
-  @ApiResponse({ status: 200, description: 'Comanda obtenida exitosamente' })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async obtenerComandaPorNumero(@Param('numero') numero: string) {
-    return await this.comandaService.obtenerComandaPorNumero(numero);
+  async obtenerPorId(@Param('id', ParseUUIDPipe) id: string): Promise<Comanda> {
+    return await this.comandaService.obtenerPorId(id);
   }
 
   @Put(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiParam({ name: 'id', description: 'ID de la comanda', example: 'uuid-de-la-comanda' })
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Actualizar comanda',
-    description: 'Actualiza una comanda existente con los datos proporcionados'
+    description: 'Actualiza una comanda existente',
   })
-  @ApiResponse({ status: 200, description: 'Comanda actualizada exitosamente' })
-  @ApiResponse({ status: 400, description: 'Datos inválidos o comanda duplicada' })
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({
+    status: 200,
+    description: 'Comanda actualizada exitosamente',
+    type: Comanda,
+  })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async actualizarComanda(
-    @Param('id') id: string,
+  async actualizar(
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarComandaDto: ActualizarComandaDto,
-    @Request() req,
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
-    return await this.comandaService.actualizarComanda(
-      id,
-      actualizarComandaDto,
-      req.user,
-      ipAddress,
-      userAgent,
-    );
+  ): Promise<Comanda> {
+    return await this.comandaService.actualizar(id, actualizarComandaDto);
   }
 
   @Delete(':id')
-  @Roles(RolPersonal.ADMIN)
-  @ApiParam({ name: 'id', description: 'ID de la comanda', example: 'uuid-de-la-comanda' })
-  @ApiOperation({ 
-    summary: 'Eliminar comanda (soft delete)',
-    description: 'Elimina una comanda de forma lógica (soft delete)'
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Eliminar comanda',
+    description: 'Elimina una comanda (soft delete)',
   })
-  @ApiResponse({ status: 200, description: 'Comanda eliminada exitosamente' })
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({ status: 204, description: 'Comanda eliminada exitosamente' })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async eliminarComanda(
-    @Param('id') id: string,
-    @Request() req,
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
-    await this.comandaService.eliminarComanda(
-      id,
-      req.user,
-      ipAddress,
-      userAgent,
-    );
-
-    return { message: 'Comanda eliminada exitosamente' };
+  async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return await this.comandaService.eliminar(id);
   }
 
   @Post(':id/restaurar')
-  @Roles(RolPersonal.ADMIN)
-  @ApiParam({ name: 'id', description: 'ID de la comanda', example: 'uuid-de-la-comanda' })
-  @ApiOperation({ 
-    summary: 'Restaurar comanda eliminada',
-    description: 'Restaura una comanda que fue eliminada (soft delete)'
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({
+    summary: 'Restaurar comanda',
+    description: 'Restaura una comanda eliminada',
   })
-  @ApiResponse({ status: 200, description: 'Comanda restaurada exitosamente' })
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({
+    status: 200,
+    description: 'Comanda restaurada exitosamente',
+    type: Comanda,
+  })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 400, description: 'La comanda no está eliminada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async restaurarComanda(
-    @Param('id') id: string,
-    @Request() req,
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
-    return await this.comandaService.restaurarComanda(
-      id,
-      req.user,
-      ipAddress,
-      userAgent,
-    );
+  async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<Comanda> {
+    return await this.comandaService.restaurar(id);
   }
 
   @Put(':id/estado')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiParam({ name: 'id', description: 'ID de la comanda', example: 'uuid-de-la-comanda' })
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Cambiar estado de comanda',
-    description: 'Cambia el estado de una comanda (pendiente, en_proceso, completado, cancelado)'
+    description: 'Cambia el estado de una comanda',
   })
-  @ApiResponse({ status: 200, description: 'Estado de comanda cambiado exitosamente' })
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({
+    status: 200,
+    description: 'Estado de comanda cambiado exitosamente',
+    type: Comanda,
+  })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async cambiarEstadoComanda(
-    @Param('id') id: string,
-    @Body('estado') estado: EstadoComanda,
-    @Request() req,
-  ) {
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers['user-agent'];
-
-    return await this.comandaService.cambiarEstadoComanda(
-      id,
-      estado,
-      req.user,
-      ipAddress,
-      userAgent,
-    );
-  }
-
-  @Get('estadisticas/resumen')
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiOperation({ 
-    summary: 'Obtener estadísticas de comandas',
-    description: 'Obtiene un resumen estadístico de las comandas'
-  })
-  @ApiQuery({ name: 'fechaInicio', required: false, description: 'Fecha de inicio (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'fechaFin', required: false, description: 'Fecha de fin (YYYY-MM-DD)' })
-  @ApiResponse({ status: 200, description: 'Estadísticas obtenidas exitosamente' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async obtenerEstadisticas(
-    @Query('fechaInicio') fechaInicio?: string,
-    @Query('fechaFin') fechaFin?: string,
-  ) {
-    // Implementar lógica de estadísticas
-    const filtros: Partial<FiltrarComandasDto> = {};
-    if (fechaInicio) filtros.fechaInicio = fechaInicio;
-    if (fechaFin) filtros.fechaFin = fechaFin;
-
-    const comandas = await this.comandaService.filtrarComandas(filtros);
-   
-
-    const estadisticas = {
-      totalComandas: comandas.total,
-      totalIngresos: comandas.comandas.filter(c => c.tipo?.nombre === 'Ingreso').length,
-      totalEgresos: comandas.comandas.filter(c => c.tipo?.nombre === 'Egreso').length,
-      totalPendientes: comandas.comandas.filter(c => c.estado === EstadoComanda.PENDIENTE).length,
-      totalEnProceso: comandas.comandas.filter(c => c.estado === EstadoComanda.EN_PROCESO).length,
-      totalCompletadas: comandas.comandas.filter(c => c.estado === EstadoComanda.COMPLETADO).length,
-      totalCanceladas: comandas.comandas.filter(c => c.estado === EstadoComanda.CANCELADO).length,
-      montoTotal: comandas.comandas.reduce((sum, c) => sum + c.totalFinal, 0),
-      montoPromedio: comandas.comandas.length > 0 
-        ? comandas.comandas.reduce((sum, c) => sum + c.totalFinal, 0) / comandas.comandas.length 
-        : 0,
-    };
-
-    return estadisticas;
-  }
-
-  @Get('exportar')
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiOperation({ 
-    summary: 'Exportar comandas',
-    description: 'Exporta las comandas filtradas en formato CSV, PDF o Excel'
-  })
-  @ApiQuery({ 
-    name: 'estado', 
-    enum: EstadoComanda, 
-    required: false,
-    description: 'Filtrar por estado de comanda'
-  })
-  @ApiQuery({ 
-    name: 'fechaInicio', 
-    type: String, 
-    required: false,
-    description: 'Fecha de inicio (YYYY-MM-DD)',
-    example: '2024-01-01'
-  })
-  @ApiQuery({ 
-    name: 'fechaFin', 
-    type: String, 
-    required: false,
-    description: 'Fecha de fin (YYYY-MM-DD)',
-    example: '2024-12-31'
-  })
-  @ApiQuery({ 
-    name: 'clienteId', 
-    type: String, 
-    required: false,
-    description: 'Filtrar por ID de cliente'
-  })
-  @ApiQuery({ 
-    name: 'personalId', 
-    type: String, 
-    required: false,
-    description: 'Filtrar por ID de personal'
-  })
-  @ApiQuery({ 
-    name: 'unidadNegocio', 
-    type: String, 
-    required: false,
-    description: 'Filtrar por unidad de negocio'
-  })
-  @ApiQuery({ 
-    name: 'tipoId', 
-    type: String, 
-    required: false,
-    description: 'Filtrar por ID de tipo'
-  })
-  @ApiQuery({ 
-    name: 'tipoItemId', 
-    type: String, 
-    required: false,
-    description: 'Filtrar por ID de tipo de item'
-  })
-  @ApiQuery({ 
-    name: 'formato', 
-    enum: ['csv', 'pdf', 'excel'], 
-    required: false,
-    description: 'Formato de exportación (default: csv)',
-    example: 'csv'
-  })
-  @ApiResponse({ status: 200, description: 'Archivo exportado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Formato de exportación no válido' })
-  @ApiResponse({ status: 403, description: 'Acceso denegado' })
-  async exportarComandas(
-    @Res() res: Response,
-    @Query('estado') estado?: EstadoComanda,
-    @Query('fechaInicio') fechaInicio?: string,
-    @Query('fechaFin') fechaFin?: string,
-    @Query('clienteId') clienteId?: string,
-    @Query('personalId') personalId?: string,
-    @Query('unidadNegocio') unidadNegocio?: string,
-    @Query('tipoId') tipoId?: string,
-    @Query('tipoItemId') tipoItemId?: string,
-    @Query('formato') formato?: 'csv' | 'pdf' | 'excel',
-  ) {
-    const filtros: Partial<FiltrarComandasDto> = {
-      estado,
-      fechaInicio,
-      fechaFin,
-      clienteId,
-      personalPrincipalId: personalId,
-      unidadNegocio: unidadNegocio as UnidadNegocio,
-      tipoId,
-      tipoItemId,
-    };
-
-    const resultado = await this.comandaService.exportarComandas(filtros, formato || 'csv');
-
-    res.setHeader('Content-Type', resultado.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${resultado.filename}"`);
-    
-    if (typeof resultado.data === 'string') {
-      res.send(resultado.data);
-    } else {
-      res.send(resultado.data);
-    }
+  async cambiarEstado(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('estadoDeComanda') estadoDeComanda: EstadoDeComanda,
+  ): Promise<Comanda> {
+    return await this.comandaService.cambiarEstado(id, estadoDeComanda);
   }
 }

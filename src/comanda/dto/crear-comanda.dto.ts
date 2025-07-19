@@ -1,234 +1,133 @@
-import {
-  IsString,
-  IsEnum,
-  IsDateString,
-  IsOptional,
-  IsArray,
-  IsNumber,
-  IsUUID,
-  Min,
-  MaxLength,
-  ValidateNested,
-  IsPositive,
-  ArrayMinSize,
-} from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsUUID, IsEnum, IsArray, Min, IsBoolean, ValidateNested } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { TipoDeComanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
-import { Caja } from 'src/enums/Caja.enum';
-import { EstadoComanda } from 'src/comanda/entities/Comanda.entity';
-
-export class CrearItemComandaDto {
-  @ApiProperty({
-    description: 'ID del producto o servicio',
-    example: 'uuid-del-producto'
-  })
-  @IsString()
-  productoServicioId: string;
-
-  @ApiProperty({
-    description: 'Nombre del producto o servicio',
-    example: 'Servicio de consultoría',
-    maxLength: 150
-  })
-  @IsString()
-  @MaxLength(150)
-  nombre: string;
-
-  @ApiProperty({
-    description: 'ID del tipo de item',
-    example: 'uuid-del-tipo-item'
-  })
-  @IsUUID()
-  tipoId: string;
-
-  @ApiProperty({
-    description: 'Precio unitario',
-    example: 100.50,
-    minimum: 0
-  })
-  @IsNumber()
-  @Min(0)
-  precio: number;
-
-  @ApiProperty({
-    description: 'Cantidad',
-    example: 2,
-    minimum: 1
-  })
-  @IsNumber()
-  @IsPositive()
-  cantidad: number;
-
-  @ApiPropertyOptional({
-    description: 'Descuento aplicado',
-    example: 10.00,
-    minimum: 0,
-    default: 0
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  descuento?: number = 0;
-
-  @ApiProperty({
-    description: 'ID del personal asignado',
-    example: 'uuid-del-personal'
-  })
-  @IsUUID()
-  personalId: string;
-}
+import { CrearItemComandaDto } from './item-comanda.dto';
+import { DescuentoDto } from './descuento.dto';
+import { MetodoPagoDto } from './metodoPago.dto';
 
 export class CrearComandaDto {
-  @ApiProperty({ 
-    description: 'Número de comanda', 
-    maxLength: 50,
-    example: 'CMD-2024-001' 
+  @ApiProperty({
+    description: 'Número de comanda',
+    example: 'COM-2024-001',
   })
   @IsString()
-  @MaxLength(50)
   numero: string;
 
-  @ApiProperty({ 
-    description: 'Fecha de la comanda',
-    example: '2024-01-15T10:30:00Z' 
-  })
-  @IsDateString()
-  fecha: string;
-
-  @ApiProperty({ 
-    description: 'Unidad de negocio', 
-    enum: UnidadNegocio,
-    example: UnidadNegocio.TATTOO 
-  })
-  @IsEnum(UnidadNegocio)
-  unidadNegocio: UnidadNegocio;
-
-  @ApiPropertyOptional({ 
-    description: 'Caja asignada', 
+  @ApiProperty({
+    description: 'Caja de la comanda',
     enum: Caja,
-    default: Caja.CAJA_1,
-    example: Caja.CAJA_1 
+    example: Caja.CAJA_1,
   })
-  @IsOptional()
   @IsEnum(Caja)
-  enCaja?: Caja;
-
-  @ApiProperty({ 
-    description: 'ID del cliente',
-    example: 'uuid-del-cliente' 
-  })
-  @IsUUID()
-  clienteId: string;
-
-  @ApiProperty({ 
-    description: 'ID del personal principal',
-    example: 'uuid-del-personal-principal' 
-  })
-  @IsUUID()
-  personalPrincipalId: string;
-
-  @ApiProperty({ 
-    description: 'Items de la comanda',
-    type: [CrearItemComandaDto] 
-  })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CrearItemComandaDto)
-  items: CrearItemComandaDto[];
-
-  @ApiPropertyOptional({ 
-    description: 'IDs de métodos de pago',
-    type: [String],
-    example: ['uuid-metodo-1', 'uuid-metodo-2'] 
-  })
-  @IsOptional()
-  @IsArray()
-  @IsUUID(undefined, { each: true })
-  metodosPagoIds?: string[];
-
-  @ApiPropertyOptional({ 
-    description: 'ID del prepago asociado',
-    example: 'uuid-del-prepago' 
-  })
-  @IsOptional()
-  @IsUUID()
-  prepagoId?: string;
-
-  @ApiPropertyOptional({ 
-    description: 'Subtotal',
-    minimum: 0,
-    example: 1000.00 
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  subtotal?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Total de descuentos',
-    minimum: 0,
-    example: 100.00 
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalDescuentos?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Total de recargos',
-    minimum: 0,
-    example: 50.00 
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalRecargos?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Total prepago',
-    minimum: 0,
-    example: 200.00 
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalPrepago?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Total final',
-    minimum: 0,
-    example: 950.00 
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  totalFinal?: number;
-
-  @ApiPropertyOptional({ 
-    description: 'Estado de la comanda', 
-    enum: EstadoComanda,
-    default: EstadoComanda.PENDIENTE,
-    example: EstadoComanda.PENDIENTE 
-  })
-  @IsOptional()
-  @IsEnum(EstadoComanda)
-  estado?: EstadoComanda;
+  caja: Caja;
 
   @ApiProperty({
-    description: 'ID del tipo de comanda',
-    example: 'uuid-del-tipo-comanda'
+    description: 'Tipo de comanda',
+    enum: TipoDeComanda,
+    example: TipoDeComanda.INGRESO,
+  })
+  @IsEnum(TipoDeComanda)
+  tipoDeComanda: TipoDeComanda;
+
+  @ApiProperty({
+    description: 'Estado de la comanda',
+    enum: EstadoDeComanda,
+    example: EstadoDeComanda.PENDIENTE,
+  })
+  @IsEnum(EstadoDeComanda)
+  estadoDeComanda: EstadoDeComanda;
+
+  @ApiPropertyOptional({
+    description: 'ID del cliente',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID()
+  clienteId?: string;
+
+  @ApiProperty({
+    description: 'ID del personal que crea la comanda',
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsUUID()
-  tipoId: string;
+  creadoPorId: string;
 
-  @ApiPropertyOptional({ 
-    description: 'Observaciones',
-    maxLength: 500,
-    example: 'Cliente solicita atención especial' 
+  @ApiPropertyOptional({
+    description: 'IDs de métodos de pago',
+    example: ['123e4567-e89b-12d3-a456-426614174000'],
+  })
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => MetodoPagoDto)
+  metodosPago?: MetodoPagoDto[];
+
+  @ApiProperty({
+    description: 'Precio en dólares',
+    example: 100.50,
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  precioDolar: number;
+
+  @ApiProperty({
+    description: 'Precio en pesos',
+    example: 1000.50,
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  precioPesos: number;
+
+  @ApiProperty({
+    description: 'Valor del dólar',
+    example: 1000.00,
+    minimum: 0,
+  })
+  @IsNumber()
+  @Min(0)
+  valorDolar: number;
+
+  @ApiPropertyOptional({
+    description: 'Observaciones de la comanda',
+    example: 'Comanda para tatuaje de manga',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
   observaciones?: string;
+
+  @ApiProperty({
+    description: 'Usuario consume prepago',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  usuarioConsumePrepago: boolean;
+
+  @ApiProperty({
+    description: 'Descuentos aplicados',
+    example: [{
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      descuento: 10,
+    }],
+  })
+  @Type(() => DescuentoDto)
+  @ValidateNested({ each: true })
+  @IsArray()
+  descuentosAplicados?: DescuentoDto[];
+
+  @ApiProperty({
+    description: 'Items de la comanda',
+    example: [{
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      cantidad: 1,
+    }],
+  })
+  @ValidateNested({ each: true })
+  @Type(() => CrearItemComandaDto)
+  @IsArray()
+  @IsOptional()
+  items?: CrearItemComandaDto[];
 } 

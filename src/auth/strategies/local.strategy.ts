@@ -36,8 +36,6 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       nombre: user.nombre,
       rol: user.rol,
-      unidadesDisponibles: user.unidadesDisponibles,
-      comisionPorcentaje: user.comisionPorcentaje,
     };
   }
 }

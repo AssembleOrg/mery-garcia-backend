@@ -16,6 +16,7 @@ export interface AuditoriaData {
   ipAddress?: string;
   userAgent?: string;
   usuario?: Personal;
+  entidadId?: string;
 }
 
 @Injectable()

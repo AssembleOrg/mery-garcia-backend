@@ -1,4 +1,4 @@
 export enum TipoMoneda {
-    PESOS = 'pesos',
-    DOLARES = 'dolares',
+    ARS = 'ARS',
+    USD = 'USD',
 }

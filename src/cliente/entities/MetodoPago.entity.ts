@@ -11,6 +11,8 @@ import {
     DeleteDateColumn,
 } from 'typeorm';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { NumericTransformer } from '../../common/transformers/numeric.transformer';
+import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 
 
 
@@ -27,10 +29,7 @@ export class MetodoPago {
         precision: 12,
         scale: 2,
         default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
+        transformer: NumericTransformer,
     })
     monto: number;
 
@@ -40,12 +39,21 @@ export class MetodoPago {
         precision: 5,
         scale: 2,
         default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
+        transformer: NumericTransformer,
     })
     recargoPorcentaje: number;
+
+
+
+    @Column({
+        name: 'descuento_global_porcentaje',
+        type: 'numeric',
+        precision: 5,
+        scale: 2,
+        default: 0,
+        transformer: NumericTransformer,
+    })
+    descuentoGlobalPorcentaje: number;
 
     @Column({
         name: 'monto_final',
@@ -53,10 +61,7 @@ export class MetodoPago {
         precision: 12,
         scale: 2,
         default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
+        transformer: NumericTransformer,
     })
     montoFinal: number;
 
@@ -64,6 +69,10 @@ export class MetodoPago {
         onDelete: 'CASCADE',
     })
     comanda: Comanda;
+    
+
+    @Column({ type: 'enum', enum: TipoMoneda })
+    moneda: TipoMoneda;
 
     @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     createdAt: Date;

@@ -16,9 +16,9 @@ import { PersonalModule } from './personal/personal.module';
 import { ClienteModule } from './cliente/cliente.module';
 import { ComandaModule } from './comanda/comanda.module';
 import { AuthModule } from './auth/auth.module';
-import { CajaModule } from './caja/caja.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { ConfigModule as SistemaConfigModule } from './config/config.module';
+import { CommonModule } from './common/common.module';
 
 @Module({
   imports: [
@@ -60,9 +60,9 @@ import { ConfigModule as SistemaConfigModule } from './config/config.module';
     ComandaModule,
     ClienteModule,
     AuthModule,
-    CajaModule,
     AuditoriaModule,
     SistemaConfigModule,
+    CommonModule,
   ],
   controllers: [AppController],
   providers: [AppService, ],

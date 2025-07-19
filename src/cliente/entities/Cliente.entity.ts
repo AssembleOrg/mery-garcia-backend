@@ -11,6 +11,8 @@ import {
 import { Comanda } from '../../comanda/entities/Comanda.entity';
 import { PrepagoGuardado } from '../../personal/entities/PrepagoGuardado.entity';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { TipoMoneda } from '../../enums/TipoMoneda.enum';
+import { EstadoPrepago } from '../../enums/EstadoPrepago.enum';
 
 @Entity({ name: 'clientes' })
 export class Cliente {
@@ -36,7 +38,7 @@ export class Cliente {
     email: string;
 
     @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
-    createdAt: Date;
+    fechaRegistro: Date;
 
     @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
     updatedAt: Date;
@@ -50,6 +52,26 @@ export class Cliente {
     })
     prepagosGuardados: PrepagoGuardado[];
 
+    @Column({ type: 'text', nullable: true })
+    comentarios?: string;
+
     @OneToMany(() => Comanda, comanda => comanda.cliente)
     comandas: Comanda[];
+
+    // Computed property for señasDisponibles
+    get señasDisponibles(): { ars: number; usd: number } {
+        if (!this.prepagosGuardados) {
+            return { ars: 0, usd: 0 };
+        }
+
+        const ars = this.prepagosGuardados
+            .filter(pg => pg.moneda === TipoMoneda.ARS && pg.estado === EstadoPrepago.ACTIVA)
+            .reduce((sum, pg) => sum + Number(pg.monto), 0);
+
+        const usd = this.prepagosGuardados
+            .filter(pg => pg.moneda === TipoMoneda.USD && pg.estado === EstadoPrepago.ACTIVA)
+            .reduce((sum, pg) => sum + Number(pg.monto), 0);
+
+        return { ars, usd };
+    }
 }

@@ -1,0 +1,5 @@
+export enum RolTrabajador {
+  TRABAJADOR= 'TRABAJADOR',
+  ENCARGADO = 'ENCARGADO',
+  VENDEDOR = 'VENDEDOR',
+}

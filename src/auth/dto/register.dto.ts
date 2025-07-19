@@ -1,6 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, MinLength, IsOptional, IsEnum, IsNumber, IsBoolean, IsArray, ArrayNotEmpty } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
 
 export class RegisterDto {
@@ -57,19 +56,6 @@ export class RegisterDto {
   @IsEnum(RolPersonal)
   @IsOptional()
   rol?: RolPersonal;
-
-  @ApiProperty({
-    description: 'Unidades de negocio disponibles',
-    enum: UnidadNegocio,
-    isArray: true,
-    example: [UnidadNegocio.TATTOO, UnidadNegocio.ESTILISMO],
-    required: false,
-  })
-  @IsArray()
-  @ArrayNotEmpty()
-  @IsEnum(UnidadNegocio, { each: true })
-  @IsOptional()
-  unidadesDisponibles?: UnidadNegocio[];
 
   @ApiProperty({
     description: 'Número de teléfono',

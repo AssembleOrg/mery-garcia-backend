@@ -10,7 +10,7 @@ export const TimezoneTransformer = {
   to: (value?: Date): Date | undefined => {
     if (!value) return value;
     const horaActualART = formatInTimeZone(
-      new Date(),
+      value, // ✅ FIXED: Usar el value que recibe como parámetro
       'America/Argentina/Buenos_Aires',
       "yyyy-MM-dd'T'HH:mm:ssXXX"
     );

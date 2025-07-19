@@ -9,14 +9,19 @@ import {
     UpdateDateColumn,
     DeleteDateColumn,
 } from 'typeorm';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { Movimiento } from 'src/comanda/entities/movimiento.entity';
 
 @Entity({ name: 'personal' })
 export class Personal {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+    
+    @OneToMany(() => Movimiento, (m) => m.personal, {
+        cascade: true,
+    })
+    movimientos: Movimiento[];
 
     @Column({ length: 100 })
     nombre: string;
@@ -26,9 +31,6 @@ export class Personal {
 
     @Column({ length: 255 })
     password: string;
-
-    @Column('numeric', { precision: 5, scale: 2, default: 0 })
-    comisionPorcentaje: number;
 
     @Column({ default: true })
     activo: boolean;
@@ -41,17 +43,8 @@ export class Personal {
     })
     rol: RolPersonal;
 
-    @Column({
-        type: 'enum',
-        enum: UnidadNegocio,
-        enumName: 'unidad_negocio_enum',
-        array: true,
-        default: () => "ARRAY['tattoo']::unidad_negocio_enum[]",
-    })
-    unidadesDisponibles: UnidadNegocio[];
-
-    @Column({ nullable: true })
-    telefono?: string;
+    @OneToMany(() => Comanda, comanda => comanda.creadoPor)
+    comandasCreadas: Comanda[];
 
     @Column({ type: 'timestamptz', transformer: TimezoneTransformer })
     fechaIngreso: Date;
@@ -64,7 +57,4 @@ export class Personal {
 
     @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
-
-    @OneToMany(() => Comanda, c => c.personalPrincipal)
-    comandas: Comanda[];
 }

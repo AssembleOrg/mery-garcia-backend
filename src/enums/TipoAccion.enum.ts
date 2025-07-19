@@ -16,6 +16,7 @@ export enum TipoAccion {
     COMANDA_MODIFICADA = 'comanda_modificada',
     COMANDA_ELIMINADA = 'comanda_eliminada',
     COMANDA_COMPLETADA = 'comanda_completada',
+    COMANDA_RESTAURADA = 'comanda_restaurada',
   
     // Clientes
     CLIENTE_CREADO = 'cliente_creado',

@@ -34,8 +34,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       nombre: user.nombre,
       rol: user.rol,
-      unidadesDisponibles: user.unidadesDisponibles,
-      comisionPorcentaje: user.comisionPorcentaje,
       sub: user.id, // Para compatibilidad con el payload JWT
     };
   }

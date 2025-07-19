@@ -1,161 +1,152 @@
-// src/modules/comanda/entities/comanda.entity.ts
+// src/comandas/comanda.entity.ts
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    OneToMany,
-    ManyToMany,
-    OneToOne,
-    JoinColumn,
-    JoinTable,
-    CreateDateColumn,
-    UpdateDateColumn,
-    DeleteDateColumn,
-    VersionColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+  ManyToOne,
+  OneToMany,
+  VersionColumn,
+  Index,
+  ManyToMany,
+  JoinTable,
+  JoinColumn,
+  RelationId,
 } from 'typeorm';
+import { Personal } from 'src/personal/entities/Personal.entity';
+import { Cliente } from 'src/cliente/entities/Cliente.entity';
+import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
+import { Descuento } from 'src/comanda/entities/descuento.entity';
+import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
+import { NumericTransformer } from 'src/common/transformers/numeric.transformer';
+import { Movimiento } from './movimiento.entity';
 import { ItemComanda } from './ItemComanda.entity';
-import { Cliente } from '../../cliente/entities/Cliente.entity';
-import { Prepago } from '../../personal/entities/Prepago.entity';
-import { MetodoPago } from '../../cliente/entities/MetodoPago.entity';
-import { Comision } from '../../personal/entities/Comision.entity';
-import { Personal } from '../../personal/entities/Personal.entity';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
-import { Caja } from 'src/enums/Caja.enum';
-import { TipoComanda } from './TipoComanda.entity';
+import { Egreso } from './egreso.entity';
 
-export enum EstadoComanda {
-    PENDIENTE = 'pendiente',
-    EN_PROCESO = 'en_proceso',
-    COMPLETADO = 'completado',
-    CANCELADO = 'cancelado',
+export enum TipoDeComanda {
+  INGRESO = 'INGRESO',
+  EGRESO = 'EGRESO',
+}
+
+export enum EstadoDeComanda {
+  PENDIENTE = 'PENDIENTE',
+  PAGADA = 'PAGADA',
+  CANCELADA = 'CANCELADA',
+  FINALIZADA = 'FINALIZADA',
+  TRASPASADA = 'TRASPASADA',
+  VALIDADO = 'VALIDADO',
+}
+
+export enum Caja {
+    CAJA_1 = 'caja_1',
+    CAJA_2 = 'caja_2',
 }
 
 @Entity({ name: 'comandas' })
 export class Comanda {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  /* ---------- PK & metadata ---------- */
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-    @Column({ length: 50, unique: true })
-    numero: string;
+  @Index({ unique: true })
+  @Column({ length: 30 })
+  numero: string;
 
-    @CreateDateColumn({ type: 'timestamptz' })
-    createdAt: Date;
+  @Column({
+    type: 'enum',
+    enum: Caja,
+  })
+  caja: Caja;
 
-    @UpdateDateColumn({ type: 'timestamptz' })
-    updatedAt: Date;
+  @CreateDateColumn({
+    type: 'timestamptz',
+    transformer: TimezoneTransformer,
+  })
+  createdAt: Date;
 
-    /** Soft-delete marker */
-    @DeleteDateColumn({ type: 'timestamptz', nullable: true })
-    deletedAt?: Date;
+  @OneToMany(() => Egreso, (e) => e.comanda, {
+    cascade: true,
+  })
+  egresos?: Egreso[];
 
-    @Column({ type: 'timestamptz' })
-    fecha: Date;
+  @UpdateDateColumn({
+    type: 'timestamptz',
+    transformer: TimezoneTransformer,
+  })
+  updatedAt: Date;
 
-    @Column({ type: 'enum', enum: UnidadNegocio })
-    unidadNegocio: UnidadNegocio;
+  @DeleteDateColumn({
+    type: 'timestamptz',
+    transformer: TimezoneTransformer,
+    nullable: true,
+  })
+  deletedAt?: Date;
 
-    @Column({
-        type: 'enum',
-        enum: Caja,
-        enumName: 'caja_enum',
-        default: Caja.CAJA_1,
-    })
-    enCaja: Caja;
+  /** Optimistic locking */
+  @VersionColumn()
+  version: number;
 
-    @ManyToOne(() => Cliente, cliente => cliente.comandas, { eager: true })
-    @JoinColumn({ name: 'cliente_id' })
-    cliente: Cliente;
+  /* ---------- Relaciones ---------- */
+  @ManyToOne(() => Personal, (p) => p.comandasCreadas, {
+    nullable: false,
+    onDelete: 'RESTRICT',
+  })
+  creadoPor: Personal;
 
-    @ManyToOne(() => Personal, personal => personal.comandas, { eager: true })
-    @JoinColumn({ name: 'personal_principal_id' })
-    personalPrincipal: Personal;
+  @ManyToOne(() => Cliente, (c) => c.comandas, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  cliente?: Cliente;
 
-    @OneToMany(() => ItemComanda, item => item.comanda, {
-        cascade: ['insert', 'update', 'soft-remove', 'recover'],
-        eager: false,
-    })
-    items: ItemComanda[];
+  @ManyToOne(() => Movimiento, m => m.comandas)
+  @JoinColumn({ name: 'movimiento_id' })
+  movimiento!: Movimiento;
 
-    @OneToOne(() => Prepago, prepago => prepago.comanda, {
-        cascade: ['insert', 'update', 'soft-remove', 'recover'],
-        eager: true,
-        nullable: true,
-    })
-    @JoinColumn({ name: 'prepago_id' })
-    prepago?: Prepago;
+  @RelationId((comanda: Comanda) => comanda.movimiento)
+  movimientoId: string;
 
-    @ManyToMany(() => MetodoPago, { eager: false })
-    @JoinTable({ name: 'comanda_metodos_pago' })
-    metodosPago: MetodoPago[];
+  @OneToMany(() => MetodoPago, (mp) => mp.comanda, {
+    cascade: true,
+  })
+  metodosPago: MetodoPago[];
 
-    // ▼ Campos numéricos con transformer para mapear string→number
-    @Column({
-        type: 'numeric', precision: 12, scale: 2, default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
-    })
-    subtotal: number;
+  @OneToMany(() => Descuento, (d) => d.comanda, {
+    cascade: true,
+  })
+  descuentosAplicados: Descuento[];
 
-    @Column({
-        type: 'numeric', precision: 12, scale: 2, default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
-    })
-    totalDescuentos: number;
+  @OneToMany(() => ItemComanda, (ic) => ic.comanda, {
+    cascade: true,
+  })
+  items: ItemComanda[];
+  /* ---------- Data ---------- */
+  @Column({
+    type: 'enum',
+    enum: TipoDeComanda,
+  })
+  tipoDeComanda: TipoDeComanda;
 
-    @Column({
-        type: 'numeric', precision: 12, scale: 2, default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
-    })
-    totalRecargos: number;
+  @Column({
+    type: 'enum',
+    enum: EstadoDeComanda,
+  })
+  estadoDeComanda: EstadoDeComanda;
 
-    @Column({
-        name: 'total_prepago',
-        type: 'numeric', precision: 12, scale: 2, default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
-    })
-    totalPrepago: number;
+  @Column({ type: 'boolean', default: false })
+  usuarioConsumePrepago: boolean;
 
-    @Column({
-        type: 'numeric', precision: 12, scale: 2, default: 0,
-        transformer: {
-            to: (v: number) => v,
-            from: (v: string) => parseFloat(v),
-        },
-    })
-    totalFinal: number;
+  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  precioDolar: number;
 
-    @OneToMany(() => Comision, comision => comision.comanda, {
-        cascade: ['insert', 'update', 'soft-remove', 'recover'],
-        eager: false,
-    })
-    comisiones: Comision[];
+  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  precioPesos: number;
 
-    @Column({ type: 'enum', enum: EstadoComanda, default: EstadoComanda.PENDIENTE })
-    estado: EstadoComanda;
+  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  valorDolar: number;
 
-    @ManyToOne(() => TipoComanda, { eager: true })
-    @JoinColumn({ name: 'tipo_id' })
-    tipo: TipoComanda;
-
-    @Column({ length: 500, nullable: true })
-    observaciones?: string;
-    
-    @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
-    precioDolar: number;
-
-    /** Para optimistic locking */
-    @VersionColumn()
-    version: number;
+  @Column({ type: 'text', nullable: true })
+  observaciones?: string;
 }

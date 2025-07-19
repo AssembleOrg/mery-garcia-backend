@@ -23,20 +23,19 @@ async function bootstrap() {
   // 2. HPP: evita contaminación de parámetros
   app.use(hpp());
 
-  app.use(
-    rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutos
-      max: 100, // límite de peticiones
-      standardHeaders: true,
-      legacyHeaders: false,
-    }),
-  );
+  // app.use(
+  //   rateLimit({
+  //     windowMs: 15 * 60 * 1000, // 15 minutos
+  //     max: 100, // límite de peticiones
+  //     standardHeaders: true,
+  //     legacyHeaders: false,
+  //   }),
+  // );
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new TransformInterceptor());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
       transform: true,
       exceptionFactory: (errors) => new BadRequestException(errors),
     }),

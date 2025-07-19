@@ -7,7 +7,6 @@ import { Personal } from 'src/personal/entities/Personal.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
-import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
 
 @Injectable()
 export class AuthService {
@@ -50,7 +49,6 @@ export class AuthService {
         nombre: user.nombre,
         rol: user.rol,
         unidadesDisponibles: user.unidadesDisponibles,
-        comisionPorcentaje: user.comisionPorcentaje,
       },
     };
   }
@@ -79,9 +77,7 @@ export class AuthService {
       ...registerDto,
       password: hashedPassword,
       rol: registerDto.rol,
-      unidadesDisponibles: registerDto.unidadesDisponibles || [UnidadNegocio.TATTOO],
       activo: registerDto.activo !== undefined ? registerDto.activo : true,
-      comisionPorcentaje: registerDto.comisionPorcentaje || 0,
     });
 
     const savedUser = await this.personalRepository.save(newUser);

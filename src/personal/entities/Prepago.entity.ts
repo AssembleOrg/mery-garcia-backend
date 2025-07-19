@@ -1,6 +1,5 @@
 // src/modules/prepago/entities/prepago.entity.ts
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
-import { Comanda } from '../../comanda/entities/Comanda.entity';
 import {
     Entity,
     PrimaryGeneratedColumn,
@@ -41,9 +40,5 @@ export class Prepago {
     @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 
-    @OneToOne(() => Comanda, comanda => comanda.prepago, {
-        eager: false,
-    })
-    @JoinColumn({ name: 'comanda_id' })
-    comanda: Comanda;
+
 }
