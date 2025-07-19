@@ -23,6 +23,7 @@ import { Personal } from '../../personal/entities/Personal.entity';
 import { UnidadNegocio } from 'src/enums/UnidadNegocio.enum';
 import { Caja } from 'src/enums/Caja.enum';
 import { TipoComanda } from './TipoComanda.entity';
+import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 
 export enum EstadoComanda {
     PENDIENTE = 'pendiente',
@@ -76,6 +77,9 @@ export class Comanda {
         eager: false,
     })
     items: ItemComanda[];
+
+    @Column({ type: 'enum', enum: TipoMoneda })
+    moneda: TipoMoneda;
 
     @OneToOne(() => Prepago, prepago => prepago.comanda, {
         cascade: ['insert', 'update', 'soft-remove', 'recover'],

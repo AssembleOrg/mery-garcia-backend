@@ -231,4 +231,14 @@ export class CrearComandaDto {
   @IsString()
   @MaxLength(500)
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description: 'Moneda de la comanda',
+    enum: ['pesos', 'dolares'],
+    default: 'pesos',
+    example: 'pesos'
+  })
+  @IsOptional()
+  @IsEnum(['pesos', 'dolares'])
+  moneda?: 'pesos' | 'dolares';
 } 

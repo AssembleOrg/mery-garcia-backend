@@ -229,4 +229,14 @@ export class ActualizarComandaDto {
   @IsNumber()
   @Min(0)
   precioDolar?: number;
+
+  @ApiPropertyOptional({
+    description: 'Moneda de la comanda',
+    enum: ['pesos', 'dolares'],
+    default: 'pesos',
+    example: 'pesos'
+  })
+  @IsOptional()
+  @IsEnum(['pesos', 'dolares'])
+  moneda?: 'pesos' | 'dolares';
 } 
