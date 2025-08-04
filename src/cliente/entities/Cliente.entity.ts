@@ -28,6 +28,15 @@ export class Cliente {
     })
     cuit?: string;
 
+    @Column({
+        type: 'varchar',
+        length: 20,
+        nullable: true,
+        unique: true,
+        default: null,
+    })
+    dni?: string;
+
     @Column({ length: 100 })
     nombre: string;
 

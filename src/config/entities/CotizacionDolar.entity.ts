@@ -6,10 +6,10 @@ export class CotizacionDolar {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'numeric', precision: 20, scale: 2 })
   compra: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2 })
+  @Column({ type: 'numeric', precision: 20, scale: 2 })
   venta: number;
 
   @Column({ type: 'varchar', length: 100 })

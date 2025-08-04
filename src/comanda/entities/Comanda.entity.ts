@@ -138,13 +138,13 @@ export class Comanda {
   @Column({ type: 'boolean', default: false })
   usuarioConsumePrepago: boolean;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
   precioDolar: number;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
   precioPesos: number;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
+  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
   valorDolar: number;
 
   @Column({ type: 'text', nullable: true })

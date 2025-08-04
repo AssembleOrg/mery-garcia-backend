@@ -28,7 +28,7 @@ export class ProductoServicio {
   @Column({ length: 150 })
   nombre: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0 })
+  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0 })
   precio: number;
 
   @Column({ type: 'enum', enum: TipoProductoServicio })
@@ -57,7 +57,7 @@ export class ProductoServicio {
   @Column({ default: false })
   esPrecioCongelado: boolean;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, nullable: true })
+  @Column({ type: 'numeric', precision: 20, scale: 2, nullable: true })
   precioFijoARS?: number;
 
   /* ---------- Fechas ---------- */

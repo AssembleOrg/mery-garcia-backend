@@ -32,7 +32,7 @@ export class ItemComanda {
     @JoinColumn({ name: 'tipo_id' })
     tipo: TipoItem;
 
-    @Column({ type: 'numeric', precision: 12, scale: 2, default: 0,
+    @Column({ type: 'numeric', precision: 20, scale: 2, default: 0,
         transformer: {
             to: (v: number) => v,
             from: (v: string) => parseFloat(v),
@@ -43,7 +43,7 @@ export class ItemComanda {
     @Column({ type: 'int', default: 1 })
     cantidad: number;
 
-    @Column({ type: 'numeric', precision: 12, scale: 2, default: 0,
+    @Column({ type: 'numeric', precision: 20, scale: 2, default: 0,
         transformer: {
             to: (v: number) => v,
             from: (v: string) => parseFloat(v),
@@ -51,7 +51,7 @@ export class ItemComanda {
     })
     descuento: number;
 
-    @Column({ type: 'numeric', precision: 12, scale: 2, default: 0,
+    @Column({ type: 'numeric', precision: 20, scale: 2, default: 0,
         transformer: {
             to: (v: number) => v,
             from: (v: string) => parseFloat(v),
