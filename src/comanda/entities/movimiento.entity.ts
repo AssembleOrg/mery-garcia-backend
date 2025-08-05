@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, RelationId, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn, RelationId, UpdateDateColumn } from 'typeorm';
 import { Comanda } from './Comanda.entity';
 import { Personal } from 'src/personal/entities/Personal.entity';
 import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
@@ -8,13 +8,13 @@ export class Movimiento {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0 })
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
   montoARS: number;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0 })
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
   montoUSD: number;
 
-  @ManyToOne(() => Comanda, (c) => c.movimiento, {
+  @OneToMany(() => Comanda, (c) => c.movimiento, {
     cascade: true,
   })
   comandas?: Comanda[];
@@ -28,10 +28,16 @@ export class Movimiento {
   })
   personal: Personal;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0 })
+  @Column({ type: 'text', nullable: true })
+  comentario?: string;
+
+  @Column({ type: 'boolean', nullable: true })
+  esIngreso?: boolean;
+
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
   residualARS: number;
 
-  @Column({ type: 'numeric', precision: 12, scale: 4, default: 0 })
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
   residualUSD: number;
 
   @CreateDateColumn({ type: 'timestamp', transformer: TimezoneTransformer })

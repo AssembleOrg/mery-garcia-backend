@@ -23,6 +23,16 @@ export class CrearClienteDto {
     telefono?: string;
 
     @ApiPropertyOptional({
+        description: 'Dni del cliente',
+        example: '12345678',
+        maxLength: 20,
+    })
+    @IsOptional()
+    @IsString()
+    @Length(0, 20)
+    dni?: string;
+
+    @ApiPropertyOptional({
         description: 'Email del cliente',
         example: 'juan.perez@email.com',
     })

@@ -1,6 +1,6 @@
 export enum EstadoPrepago {
-    ACTIVA = 'activa',
-    UTILIZADA = 'utilizada',
-    VENCIDA = 'vencida',
-    CANCELADA = 'cancelada',
+    ACTIVA = 'ACTIVO',
+    UTILIZADA = 'UTILIZADO',
+    VENCIDA = 'VENCIDO',
+    CANCELADA = 'CANCELADO',
 }

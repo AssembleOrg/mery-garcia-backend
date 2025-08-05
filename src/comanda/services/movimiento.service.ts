@@ -1,7 +1,7 @@
-import { 
-  Injectable, 
-  NotFoundException, 
-  Logger, 
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
   BadRequestException
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,10 +9,10 @@ import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Movimiento } from '../entities/movimiento.entity';
 import { Comanda, EstadoDeComanda } from '../entities/Comanda.entity';
 import { Personal } from '../../personal/entities/Personal.entity';
-import { 
-  CrearMovimientoDto, 
-  ActualizarMovimientoDto, 
-  FiltrarMovimientosDto 
+import {
+  CrearMovimientoDto,
+  ActualizarMovimientoDto,
+  FiltrarMovimientosDto
 } from '../dto/movimiento.dto';
 import { AuditoriaService } from '../../auditoria/auditoria.service';
 import { TipoAccion } from '../../enums/TipoAccion.enum';
@@ -43,15 +43,16 @@ export class MovimientoService {
     private personalRepository: Repository<Personal>,
     private auditoriaService: AuditoriaService,
     private dataSource: DataSource,
-  ) {}
+  ) { }
 
   async crear(dto: CrearMovimientoDto): Promise<Movimiento> {
+    const newComentario = dto.comentario || '';
     /* ───── Validaciones de entrada ───── */
     if (!dto.personalId) {
       throw new BadRequestException('El personal es requerido');
     }
-    if (!dto.comandasValidadasIds?.length) {
-      throw new BadRequestException('Las comandas validadas son requeridas');
+    if (!dto.comandasValidadasIds?.length && !newComentario.length) {
+      throw new BadRequestException('Las comandas validadas o comentario son requeridos');
     }
 
     /* ───── Transacción ───── */
@@ -62,23 +63,27 @@ export class MovimientoService {
     try {
       /* 1. Insertar el movimiento */
       const movimiento = await qr.manager.save(Movimiento, {
-        montoARS:     dto.montoARS,
-        montoUSD:     dto.montoUSD,
-        residualARS:  dto.residualARS,
-        residualUSD:  dto.residualUSD,
-        personal:     { id: dto.personalId } as Personal, // stub: evita 1 SELECT
+        montoARS: dto.montoARS,
+        montoUSD: dto.montoUSD,
+        residualARS: dto.residualARS,
+        residualUSD: dto.residualUSD,
+        comentario: newComentario,
+        esIngreso: dto.esIngreso ?? true, // Por defecto true si no se especifica
+        personal: { id: dto.personalId } as Personal, // stub: evita 1 SELECT
       });
 
-      /* 2. Vincular y traspasar comandas en un UPDATE */
-      await qr.manager
-        .createQueryBuilder()
-        .update(Comanda)
-        .set({
-          movimiento,                              // FK
-          estadoDeComanda: EstadoDeComanda.TRASPASADA,
-        })
-        .where({ id: In(dto.comandasValidadasIds) })
-        .execute();
+      /* 2. Vincular y traspasar comandas en un UPDATE solo si hay comandas */
+      if (dto.comandasValidadasIds && dto.comandasValidadasIds.length > 0) {
+        await qr.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({
+            movimiento,                              // FK
+            estadoDeComanda: EstadoDeComanda.TRASPASADA,
+          })
+          .where({ id: In(dto.comandasValidadasIds) })
+          .execute();
+      }
 
       await qr.commitTransaction();
 
@@ -92,7 +97,7 @@ export class MovimientoService {
     }
   }
 
-  async obtenerTodos(filtros?: FiltrarMovimientosDto): Promise<MovimientosPaginados> {
+  async obtenerTodos(filtros: FiltrarMovimientosDto): Promise<MovimientosPaginados> {
     try {
       const page = filtros?.page || 1;
       const limit = filtros?.limit || 20;
@@ -102,7 +107,7 @@ export class MovimientoService {
 
       const queryBuilder = this.movimientoRepository
         .createQueryBuilder('movimiento')
-        .leftJoinAndSelect('movimiento.comanda', 'comanda')
+        .leftJoinAndSelect('movimiento.comandas', 'comandas')
         .leftJoinAndSelect('movimiento.personal', 'personal');
 
       // Aplicar filtros
@@ -112,6 +117,16 @@ export class MovimientoService {
       const camposPermitidos = ['monto', 'residual', 'createdAt'];
       const campoOrdenamiento = camposPermitidos.includes(orderBy) ? orderBy : 'createdAt';
       queryBuilder.orderBy(`movimiento.${campoOrdenamiento}`, orderDirection as 'ASC' | 'DESC');
+
+      if (filtros.fechaDesde && filtros.fechaHasta) {
+        const fechaDesde = new Date(filtros.fechaDesde);
+        const fechaHasta = new Date(filtros.fechaHasta);
+        fechaDesde.setUTCHours(0, 0, 0, 0);
+        fechaHasta.setUTCHours(23, 59, 59, 999);
+        fechaHasta.setDate(fechaHasta.getDate() - 1);
+        queryBuilder.andWhere('movimiento.createdAt >= :fechaDesde', { fechaDesde });
+        queryBuilder.andWhere('movimiento.createdAt < :fechaHasta', { fechaHasta });
+      }
 
       const [movimientos, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
 
@@ -271,20 +286,11 @@ export class MovimientoService {
   }
 
   private aplicarFiltros(queryBuilder: SelectQueryBuilder<Movimiento>, filtros?: FiltrarMovimientosDto): void {
-    if (filtros?.comandaId) {
-      queryBuilder.andWhere('movimiento.comandaId = :comandaId', { comandaId: filtros.comandaId });
-    }
+
 
     if (filtros?.personalId) {
       queryBuilder.andWhere('movimiento.personalId = :personalId', { personalId: filtros.personalId });
     }
 
-    if (filtros?.montoMinimo !== undefined) {
-      queryBuilder.andWhere('movimiento.monto >= :montoMinimo', { montoMinimo: filtros.montoMinimo });
-    }
-
-    if (filtros?.montoMaximo !== undefined) {
-      queryBuilder.andWhere('movimiento.monto <= :montoMaximo', { montoMaximo: filtros.montoMaximo });
-    }
   }
 } 

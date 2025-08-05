@@ -7,6 +7,8 @@ import {
   Min,
   IsNotEmpty,
   IsArray,
+  IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
@@ -19,6 +21,23 @@ export class CrearMovimientoDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   montoARS: number;
+
+  @ApiPropertyOptional({
+    description: 'Indica si el movimiento es un ingreso',
+    example: true,
+    default: true
+  })
+  @IsOptional()
+  @IsBoolean()
+  esIngreso?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Comentario adicional sobre el movimiento',
+    example: 'Pago de servicios'
+  })
+  @IsOptional()
+  @IsString()
+  comentario: string;
 
   @ApiProperty({
     description: 'Monto del movimiento',
@@ -68,40 +87,12 @@ export class ActualizarMovimientoDto extends PartialType(CrearMovimientoDto) {}
 
 export class FiltrarMovimientosDto {
   @ApiPropertyOptional({
-    description: 'Filtrar por ID de comanda',
-    example: '123e4567-e89b-12d3-a456-426614174000'
-  })
-  @IsOptional()
-  @IsUUID()
-  comandaId?: string;
-
-  @ApiPropertyOptional({
     description: 'Filtrar por ID de personal',
     example: '123e4567-e89b-12d3-a456-426614174000'
   })
   @IsOptional()
   @IsUUID()
   personalId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Filtrar por monto mínimo',
-    example: 1000,
-    minimum: 0
-  })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 4 })
-  @Min(0)
-  montoMinimo?: number;
-
-  @ApiPropertyOptional({
-    description: 'Filtrar por monto máximo',
-    example: 50000,
-    minimum: 0
-  })
-  @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 4 })
-  @Min(0)
-  montoMaximo?: number;
 
   @ApiPropertyOptional({
     description: 'Número de página',
@@ -123,6 +114,22 @@ export class FiltrarMovimientosDto {
   @IsOptional()
   @Transform(({ value }) => parseInt(value))
   limit?: number;
+
+  @ApiPropertyOptional({
+      description: 'Fecha desde',
+      example: '2024-07-01T00:00:00.000Z',
+    })
+    @IsOptional()
+    @IsDateString()
+    fechaDesde?: string;
+  
+    @ApiPropertyOptional({
+      description: 'Fecha hasta',
+      example: '2024-07-31T23:59:59.000Z',
+    })
+    @IsOptional()
+    @IsDateString()
+    fechaHasta?: string;
 
   @ApiPropertyOptional({
     description: 'Campo para ordenar',

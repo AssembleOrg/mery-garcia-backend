@@ -69,8 +69,6 @@ export class FiltrarComandasDto {
   @IsUUID()
   clienteId?: string;
 
-
-
   @ApiPropertyOptional({
     description: 'ID del personal que creó la comanda',
     example: '123e4567-e89b-12d3-a456-426614174000',

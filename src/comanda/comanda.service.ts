@@ -253,8 +253,12 @@ export class ComandaService {
       .leftJoinAndSelect('items.trabajador', 'trabajador')
       .leftJoinAndSelect('productoServicio.unidadNegocio', 'unidadNegocio');
 
-    console.log(filtros.incluirTraspasadas);
-    if (!filtros.incluirTraspasadas) {
+      console.log(filtros.incluirTraspasadas, filtros);
+    // Lógica para excluir TRASPASADAS:
+    // 1. Si explícitamente NO se quieren incluir Y NO hay filtro específico de estado
+    // 2. Si es tipo INGRESO y NO hay filtro específico de estado (comportamiento por defecto)
+    if ((!filtros.incluirTraspasadas && !filtros.estadoDeComanda) || 
+        (filtros.tipoDeComanda === TipoDeComanda.INGRESO && !filtros.estadoDeComanda)) {
       queryBuilder.andWhere('comanda.estadoDeComanda != :estado', {
         estado: EstadoDeComanda.TRASPASADA,
       });
@@ -291,6 +295,8 @@ export class ComandaService {
       `comanda.${campoOrdenamiento}`,
       order as 'ASC' | 'DESC',
     );
+
+    console.log(queryBuilder.getSql());
 
     const [comandas, total] = await queryBuilder
       .skip(skip)
