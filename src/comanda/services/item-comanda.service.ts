@@ -102,13 +102,6 @@ export class ItemComandaService {
       const itemComanda = this.itemComandaRepository.create(crearItemComandaDto);
       const guardado = await this.itemComandaRepository.save(itemComanda);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_CREADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: guardado.id,
-        descripcion: `Item de comanda creado: ${guardado.nombre}`,
-      });
 
       this.logger.log(`Item de comanda creado: ${guardado.id} - ${guardado.nombre}`);
       return guardado;
@@ -237,13 +230,7 @@ export class ItemComandaService {
       Object.assign(itemComanda, actualizarDto);
       const actualizado = await this.itemComandaRepository.save(itemComanda);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: actualizado.id,
-        descripcion: `Item de comanda actualizado: ${actualizado.nombre}`,
-      });
+
 
       this.logger.log(`Item de comanda actualizado: ${actualizado.id} - ${actualizado.nombre}`);
       return actualizado;
@@ -258,13 +245,7 @@ export class ItemComandaService {
       const itemComanda = await this.obtenerPorId(id);
       await this.itemComandaRepository.softRemove(itemComanda);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_ELIMINADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: itemComanda.id,
-        descripcion: `Item de comanda eliminado: ${itemComanda.nombre}`,
-      });
+
 
       this.logger.log(`Item de comanda eliminado: ${id}`);
     } catch (error) {
@@ -286,13 +267,7 @@ export class ItemComandaService {
 
       await this.itemComandaRepository.restore(id);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: itemComanda.id,
-        descripcion: `Item de comanda restaurado: ${itemComanda.nombre}`,
-      });
+
 
       this.logger.log(`Item de comanda restaurado: ${id}`);
       return await this.obtenerPorId(id);

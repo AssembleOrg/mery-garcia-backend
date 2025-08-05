@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { Personal } from 'src/personal/entities/Personal.entity';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { Personal } from 'src/personal/entities/Personal.entity';
       }),
       inject: [ConfigService],
     }),
+    AuditoriaModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, LocalStrategy],

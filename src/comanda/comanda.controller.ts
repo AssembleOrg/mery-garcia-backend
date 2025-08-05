@@ -25,6 +25,7 @@ import { RolesGuard } from 'src/guards/roles.guard';
 import { Roles } from 'src/decorators/roles.decorator';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
 import { ComandaService } from './comanda.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
 import { ActualizarComandaDto } from './dto/actualizar-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
@@ -32,16 +33,31 @@ import { EstadoDeComanda } from './entities/Comanda.entity';
 import { Comanda } from './entities/Comanda.entity';
 import { CrearEgresoDto } from './dto/crear-egreso.dto';
 import { Egreso } from './entities/egreso.entity';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { LogAction } from 'src/decorators/log-action.decorator';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Comandas')
 @Controller('comandas')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ComandaController {
-  constructor(private readonly comandaService: ComandaService) {}
+  constructor(
+    private readonly comandaService: ComandaService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   @Post()
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @LogAction({ action: 'CREATE', entityType: 'Comanda' })
+  @Audit({ 
+    action: 'CREATE', 
+    entityType: 'Comanda',
+    description: 'Creación de comanda con items y métodos de pago',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({
     summary: 'Crear una nueva comanda',
     description: 'Crea una nueva comanda con todos sus datos',
@@ -54,19 +70,28 @@ export class ComandaController {
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 404, description: 'Cliente, trabajador o personal no encontrado' })
   async crear(@Body() crearComandaDto: CrearComandaDto): Promise<Comanda> {
-    // console.log(JSON.stringify(crearComandaDto, null, 2));
-    // return new  Comanda();
-    return await this.comandaService.crear(crearComandaDto);
+    const comanda = await this.comandaService.crear(crearComandaDto);
+    
+    return comanda;
   }
 
   @Post('egreso')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @LogAction({ action: 'CREATE', entityType: 'Comanda', description: 'Egreso creado' })
+  @Audit({ 
+    action: 'CREATE', 
+    entityType: 'Comanda',
+    description: 'Creación de egreso con detalle de gastos',
+    includeRelations: true
+  })
   @ApiOperation({
     summary: 'Crear un egreso',
     description: 'Crea un egreso con todos sus datos',
   })
   async crearComandaEgreso(@Body() crearEgresoDto: CrearEgresoDto): Promise<Comanda> {
-    return await this.comandaService.crearEgreso(crearEgresoDto);
+    const comanda = await this.comandaService.crearEgreso(crearEgresoDto);
+    
+    return comanda;
   }
 
   @Get('egreso/ultimo')
@@ -236,7 +261,9 @@ export class ComandaController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarComandaDto: CrearComandaDto,
   ): Promise<Comanda> {
-    return await this.comandaService.actualizar(id, actualizarComandaDto);
+    const comanda = await this.comandaService.actualizar(id, actualizarComandaDto);
+    
+    return comanda;
   }
 
   @Delete(':id')
@@ -250,7 +277,11 @@ export class ComandaController {
   @ApiResponse({ status: 204, description: 'Comanda eliminada exitosamente' })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
   async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return await this.comandaService.eliminar(id);
+    const comanda = await this.comandaService.obtenerPorId(id);
+    await this.comandaService.eliminar(id);
+    
+    // Registrar auditoría
+
   }
 
   @Post(':id/restaurar')
@@ -267,7 +298,12 @@ export class ComandaController {
   })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
   async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<Comanda> {
-    return await this.comandaService.restaurar(id);
+    const comanda = await this.comandaService.restaurar(id);
+    
+    // Registrar auditoría
+
+    
+    return comanda;
   }
 
   @Put(':id/estado')
@@ -287,6 +323,10 @@ export class ComandaController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body('estadoDeComanda') estadoDeComanda: EstadoDeComanda,
   ): Promise<Comanda> {
-    return await this.comandaService.cambiarEstado(id, estadoDeComanda);
+    const comanda = await this.comandaService.cambiarEstado(id, estadoDeComanda);
+    
+    // Registrar auditoría
+    
+    return comanda;
   }
 }

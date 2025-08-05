@@ -194,14 +194,6 @@ export class MovimientoService {
       Object.assign(movimiento, actualizarDto);
       const actualizado = await this.movimientoRepository.save(movimiento);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: actualizado.id,
-        descripcion: `Movimiento actualizado: $${actualizado.montoARS}`,
-      });
-
       this.logger.log(`Movimiento actualizado: ${actualizado.id} - $${actualizado.montoARS}`);
       return actualizado;
     } catch (error) {
@@ -214,14 +206,6 @@ export class MovimientoService {
     try {
       const movimiento = await this.obtenerPorId(id);
       await this.movimientoRepository.softRemove(movimiento);
-
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_ELIMINADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: movimiento.id,
-        descripcion: `Movimiento eliminado: $${movimiento.montoARS}`,
-      });
 
       this.logger.log(`Movimiento eliminado: ${id}`);
     } catch (error) {
@@ -243,13 +227,6 @@ export class MovimientoService {
 
       await this.movimientoRepository.restore(id);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: movimiento.id,
-        descripcion: `Movimiento restaurado: $${movimiento.montoARS}`,
-      });
 
       this.logger.log(`Movimiento restaurado: ${id}`);
       return await this.obtenerPorId(id);

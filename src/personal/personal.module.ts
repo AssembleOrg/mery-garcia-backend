@@ -8,11 +8,15 @@ import { Personal } from './entities/Personal.entity';
 import { Prepago } from './entities/Prepago.entity';
 import { PrepagoGuardado } from './entities/PrepagoGuardado.entity';
 import { Trabajador } from './entities/Trabajador.entity';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
   controllers: [PersonalController, TrabajadorController],
   providers: [PersonalService, TrabajadorService],
-  imports: [TypeOrmModule.forFeature([Personal, Prepago, PrepagoGuardado, Trabajador])],
+  imports: [
+    TypeOrmModule.forFeature([Personal, Prepago, PrepagoGuardado, Trabajador]),
+    AuditoriaModule,
+  ],
   exports: [PersonalService, TrabajadorService],
 })
 export class PersonalModule {}

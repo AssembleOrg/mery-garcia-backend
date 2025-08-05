@@ -142,7 +142,7 @@ export class ClienteService {
     if (orderBy === 'tieneSeñas') {
       // Agregar subconsulta para contar señas activas
       queryBuilder.addSelect(
-        `(SELECT COUNT(*) FROM prepagos_guardados pg WHERE pg.cliente_id = cliente.id AND pg.estado = 'activa')`,
+        `(SELECT COUNT(*) FROM prepagos_guardados pg WHERE pg.cliente_id = cliente.id AND pg.estado = 'ACTIVO')`,
         'tiene_senas'
       );
       queryBuilder.orderBy('tiene_senas', orderDirection as 'ASC' | 'DESC');
@@ -294,7 +294,7 @@ export class ClienteService {
     const clientesConSeñas = await this.clienteRepository
       .createQueryBuilder('cliente')
       .leftJoin('cliente.prepagosGuardados', 'prepagosGuardados')
-      .where('prepagosGuardados.estado = :estado', { estado: 'activa' })
+      .where('prepagosGuardados.estado = :estado', { estado: EstadoPrepago.ACTIVA })
       .getCount();
 
     return {

@@ -25,22 +25,36 @@ import { RolesGuard } from '../../guards/roles.guard';
 import { Roles } from '../../decorators/roles.decorator';
 import { RolPersonal } from '../../enums/RolPersonal.enum';
 import { ItemComandaService } from '../services/item-comanda.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { 
   CrearItemComandaDto, 
   ActualizarItemComandaDto, 
   FiltrarItemsComandaDto 
 } from '../dto/item-comanda.dto';
 import { ItemComanda } from '../entities/ItemComanda.entity';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Items de Comanda')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('items-comanda')
 export class ItemComandaController {
-  constructor(private readonly itemComandaService: ItemComandaService) {}
+  constructor(
+    private readonly itemComandaService: ItemComandaService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   @Post()
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'CREATE', 
+    entityType: 'ItemComanda',
+    description: 'Item de comanda creado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Crear un nuevo item de comanda',
     description: 'Crea un nuevo item de comanda en el sistema'
@@ -54,7 +68,10 @@ export class ItemComandaController {
   @ApiResponse({ status: 404, description: 'Comanda, producto/servicio, tipo o trabajador no encontrado' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async crear(@Body() crearDto: CrearItemComandaDto): Promise<ItemComanda> {
-    return this.itemComandaService.crear(crearDto);
+    const itemComanda = await this.itemComandaService.crear(crearDto);
+
+    
+    return itemComanda;
   }
 
   @Get()
@@ -140,6 +157,13 @@ export class ItemComandaController {
 
   @Put(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'ItemComanda',
+    description: 'Item de comanda actualizado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Actualizar un item de comanda',
     description: 'Actualiza un item de comanda existente'
@@ -160,12 +184,21 @@ export class ItemComandaController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarDto: ActualizarItemComandaDto,
   ): Promise<ItemComanda> {
-    return this.itemComandaService.actualizar(id, actualizarDto);
+    const itemComanda = await this.itemComandaService.actualizar(id, actualizarDto);
+    
+    return itemComanda;
   }
 
   @Delete(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audit({ 
+    action: 'DELETE', 
+    entityType: 'ItemComanda',
+    description: 'Item de comanda eliminado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Eliminar un item de comanda',
     description: 'Elimina un item de comanda (soft delete)'
@@ -178,11 +211,19 @@ export class ItemComandaController {
   @ApiResponse({ status: 204, description: 'Item de comanda eliminado exitosamente' })
   @ApiResponse({ status: 404, description: 'Item de comanda no encontrado' })
   async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.itemComandaService.eliminar(id);
+    await this.itemComandaService.eliminar(id);
+    
   }
 
   @Post(':id/restaurar')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+      @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'ItemComanda',
+        description: 'Item de comanda restaurado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
   @ApiOperation({ 
     summary: 'Restaurar un item de comanda',
     description: 'Restaura un item de comanda eliminado'
@@ -199,6 +240,10 @@ export class ItemComandaController {
   })
   @ApiResponse({ status: 404, description: 'Item de comanda no encontrado' })
   async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<ItemComanda> {
-    return this.itemComandaService.restaurar(id);
+    const itemComanda = await this.itemComandaService.restaurar(id);
+    
+
+
+    return itemComanda;
   }
 } 

@@ -53,13 +53,7 @@ export class UnidadNegocioService {
       const unidadNegocio = this.unidadNegocioRepository.create(crearUnidadNegocioDto);
       const guardado = await this.unidadNegocioRepository.save(unidadNegocio);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_CREADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: guardado.id,
-        descripcion: `Unidad de negocio creada: ${guardado.nombre}`,
-      });
+
 
       this.logger.log(`Unidad de negocio creada: ${guardado.id} - ${guardado.nombre}`);
       return guardado;
@@ -145,13 +139,7 @@ export class UnidadNegocioService {
       Object.assign(unidadNegocio, actualizarDto);
       const actualizado = await this.unidadNegocioRepository.save(unidadNegocio);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: actualizado.id,
-        descripcion: `Unidad de negocio actualizada: ${actualizado.nombre}`,
-      });
+
 
       this.logger.log(`Unidad de negocio actualizada: ${actualizado.id} - ${actualizado.nombre}`);
       return actualizado;
@@ -166,13 +154,7 @@ export class UnidadNegocioService {
       const unidadNegocio = await this.obtenerPorId(id);
       await this.unidadNegocioRepository.softRemove(unidadNegocio);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_ELIMINADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: unidadNegocio.id,
-        descripcion: `Unidad de negocio eliminada: ${unidadNegocio.nombre}`,
-      });
+
 
       this.logger.log(`Unidad de negocio eliminada: ${id}`);
     } catch (error) {
@@ -194,13 +176,7 @@ export class UnidadNegocioService {
 
       await this.unidadNegocioRepository.restore(id);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: unidadNegocio.id,
-        descripcion: `Unidad de negocio restaurada: ${unidadNegocio.nombre}`,
-      });
+
 
       this.logger.log(`Unidad de negocio restaurada: ${id}`);
       return await this.obtenerPorId(id);

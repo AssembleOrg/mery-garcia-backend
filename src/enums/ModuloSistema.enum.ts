@@ -7,4 +7,15 @@ export enum ModuloSistema {
     PREPAGO = 'prepago',
     COMISION = 'comision',
     SISTEMA = 'sistema',
-  }
+    AUDITORIA = 'auditoria',
+    CONFIG = 'config',
+    DATABASE_CLEANUP = 'database_cleanup',
+    DOLAR = 'dolar',
+    ITEM_COMANDA = 'item_comanda',
+    MOVIMIENTO = 'movimiento',
+    PRODUCTO_SERVICIO = 'producto_servicio',
+    TIPO_ITEM = 'tipo_item',
+    UNIDAD_NEGOCIO = 'unidad_negocio',
+    TRABAJADOR = 'trabajador',
+    PREPAGO_GUARDADO = 'prepago_guardado',
+}

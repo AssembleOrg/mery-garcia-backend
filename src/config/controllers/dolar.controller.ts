@@ -1,12 +1,19 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { DolarService, DolarResponse } from '../services/dolar.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { ActualizarDolarDto } from '../dto/actualizar-dolar.dto';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Dólar')
 @Controller('dolar')
 export class DolarController {
-  constructor(private readonly dolarService: DolarService) {}
+  constructor(
+    private readonly dolarService: DolarService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   @Get('cotizacion')
   @ApiOperation({ summary: 'Obtener cotización actual del dólar blue' })
@@ -87,9 +94,18 @@ export class DolarController {
   }
   
   @Post('cotizacion')
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Dolar',
+    description: 'Cotización del dólar actualizada en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ summary: 'Crear cotización del dólar' })
   @ApiBody({ type: ActualizarDolarDto })
   async actualizarCotizacion(@Body() dolar: ActualizarDolarDto): Promise<DolarResponse> {
-    return this.dolarService.actualizarDolarManualmente(dolar);
+    const resultado = await this.dolarService.actualizarDolarManualmente(dolar);
+    
+    return resultado;
   }
 } 

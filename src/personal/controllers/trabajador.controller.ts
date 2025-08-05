@@ -27,22 +27,36 @@ import { RolesGuard } from '../../guards/roles.guard';
 import { Roles } from '../../decorators/roles.decorator';
 import { RolPersonal } from '../../enums/RolPersonal.enum';
 import { TrabajadorService } from '../services/trabajador.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { 
   CrearTrabajadorDto, 
   ActualizarTrabajadorDto, 
   FiltrarTrabajadoresDto 
 } from '../dto/trabajador.dto';
 import { Trabajador } from '../entities/Trabajador.entity';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Trabajadores')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('trabajadores')
 export class TrabajadorController {
-  constructor(private readonly trabajadorService: TrabajadorService) {}
+  constructor(
+    private readonly trabajadorService: TrabajadorService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   @Post()
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'CREATE', 
+    entityType: 'Trabajador',
+    description: 'Trabajador creado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Crear un nuevo trabajador',
     description: 'Crea un nuevo trabajador en el sistema'
@@ -56,7 +70,10 @@ export class TrabajadorController {
   @ApiResponse({ status: 409, description: 'Ya existe un trabajador con ese nombre' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async crear(@Body() crearTrabajadorDto: CrearTrabajadorDto): Promise<Trabajador> {
-    return this.trabajadorService.crear(crearTrabajadorDto);
+    const trabajador = await this.trabajadorService.crear(crearTrabajadorDto);
+    
+    // Registrar auditoría
+    return trabajador;
   }
 
   @Get('paginado')
@@ -174,6 +191,13 @@ export class TrabajadorController {
 
   @Put(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Trabajador',
+    description: 'Trabajador actualizado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiParam({ name: 'id', description: 'ID del trabajador', example: 'uuid-del-trabajador' })
   @ApiOperation({ 
     summary: 'Actualizar trabajador',
@@ -192,12 +216,24 @@ export class TrabajadorController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarTrabajadorDto: ActualizarTrabajadorDto,
   ): Promise<Trabajador> {
-    return this.trabajadorService.actualizar(id, actualizarTrabajadorDto);
+    const trabajadorActualizado = await this.trabajadorService.actualizar(id, actualizarTrabajadorDto);
+    
+    // Registrar auditoría
+
+
+    return trabajadorActualizado;
   }
 
   @Delete(':id')
   @Roles(RolPersonal.ADMIN)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audit({ 
+    action: 'DELETE', 
+    entityType: 'Trabajador',
+    description: 'Trabajador eliminado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiParam({ name: 'id', description: 'ID del trabajador', example: 'uuid-del-trabajador' })
   @ApiOperation({ 
     summary: 'Eliminar trabajador (soft delete)',
@@ -207,11 +243,21 @@ export class TrabajadorController {
   @ApiResponse({ status: 404, description: 'Trabajador no encontrado' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.trabajadorService.eliminar(id);
+    await this.trabajadorService.eliminar(id);
+    
+    // Registrar auditoría
+ 
   }
 
   @Post(':id/restaurar')
   @Roles(RolPersonal.ADMIN)
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Trabajador',
+    description: 'Trabajador restaurado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiParam({ name: 'id', description: 'ID del trabajador', example: 'uuid-del-trabajador' })
   @ApiOperation({ 
     summary: 'Restaurar trabajador eliminado',
@@ -227,11 +273,23 @@ export class TrabajadorController {
   @ApiResponse({ status: 409, description: 'Ya existe un trabajador activo con ese nombre' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<Trabajador> {
-    return this.trabajadorService.restaurar(id);
+    const trabajadorRestaurado = await this.trabajadorService.restaurar(id);
+    
+    // Registrar auditoría
+
+
+    return trabajadorRestaurado;
   }
 
   @Patch(':id/estado')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Trabajador',
+    description: 'Estado del trabajador cambiado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiParam({ name: 'id', description: 'ID del trabajador', example: 'uuid-del-trabajador' })
   @ApiQuery({ name: 'activo', description: 'Estado activo', type: Boolean, example: true })
   @ApiOperation({ 
@@ -249,6 +307,9 @@ export class TrabajadorController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('activo', ParseBoolPipe) activo: boolean,
   ): Promise<Trabajador> {
-    return this.trabajadorService.cambiarEstadoActivo(id, activo);
+    const trabajadorActualizado = await this.trabajadorService.cambiarEstadoActivo(id, activo);
+    
+
+    return trabajadorActualizado;
   }
 }

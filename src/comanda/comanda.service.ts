@@ -500,13 +500,6 @@ export class ComandaService {
 
       await queryRunner.commitTransaction();
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMANDA_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: nuevaComanda.id,
-        descripcion: `Comanda actualizada: ${nuevaComanda.numero}`,
-      });
 
       this.logger.log(`Comanda actualizada: ${nuevaComanda.id} - ${nuevaComanda.numero}`);
       
@@ -524,13 +517,7 @@ export class ComandaService {
     const comanda = await this.obtenerPorId(id);
     await this.comandaRepository.softRemove(comanda);
 
-    // Registrar auditoría
-    await this.auditoriaService.registrar({
-      tipoAccion: TipoAccion.COMANDA_ELIMINADA,
-      modulo: ModuloSistema.COMANDA,
-      entidadId: comanda.id,
-      descripcion: `Comanda eliminada: ${comanda.numero}`,
-    });
+
   }
 
   async restaurar(id: string): Promise<Comanda> {
@@ -544,13 +531,6 @@ export class ComandaService {
 
     await this.comandaRepository.restore(id);
 
-    // Registrar auditoría
-    await this.auditoriaService.registrar({
-      tipoAccion: TipoAccion.COMANDA_RESTAURADA,
-      modulo: ModuloSistema.COMANDA,
-      entidadId: comanda.id,
-      descripcion: `Comanda restaurada: ${comanda.numero}`,
-    });
 
     return await this.obtenerPorId(id);
   }
@@ -886,14 +866,6 @@ export class ComandaService {
     comanda.estadoDeComanda = nuevoEstado;
 
     const comandaActualizada = await this.comandaRepository.save(comanda);
-
-    // Registrar auditoría
-    await this.auditoriaService.registrar({
-      tipoAccion: TipoAccion.COMANDA_MODIFICADA,
-      modulo: ModuloSistema.COMANDA,
-      entidadId: comandaActualizada.id,
-      descripcion: `Estado de comanda cambiado a: ${nuevoEstado}`,
-    });
 
     return await this.obtenerPorId(comandaActualizada.id);
   }

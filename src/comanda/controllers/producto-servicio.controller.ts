@@ -33,16 +33,30 @@ import {
   FiltrarProductosServiciosDto 
 } from '../dto/producto-servicio.dto';
 import { ProductoServicio } from '../entities/productoServicio.entity';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Productos y Servicios')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('productos-servicios')
 export class ProductoServicioController {
-  constructor(private readonly productoServicioService: ProductoServicioService) {}
+  constructor(
+    private readonly productoServicioService: ProductoServicioService,
+    private readonly auditoriaService: AuditoriaService,
+  ) {}
 
   @Post()
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'CREATE', 
+    entityType: 'ProductoServicio',
+    description: 'Producto/Servicio creado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Crear un nuevo producto o servicio',
     description: 'Crea un nuevo producto o servicio en el sistema'
@@ -56,7 +70,9 @@ export class ProductoServicioController {
   @ApiResponse({ status: 409, description: 'Ya existe un producto/servicio con ese nombre o código de barras' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   async crear(@Body() crearDto: CrearProductoServicioDto): Promise<ProductoServicio> {
-    return this.productoServicioService.crear(crearDto);
+    const productoServicio = await this.productoServicioService.crear(crearDto);
+    
+    return productoServicio;
   }
 
   @Get('paginado')
@@ -193,6 +209,13 @@ export class ProductoServicioController {
 
   @Put(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'ProductoServicio',
+    description: 'Producto/Servicio actualizado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Actualizar un producto o servicio',
     description: 'Actualiza un producto o servicio existente'
@@ -213,12 +236,21 @@ export class ProductoServicioController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarDto: ActualizarProductoServicioDto,
   ): Promise<ProductoServicio> {
-    return this.productoServicioService.actualizar(id, actualizarDto);
+    const productoServicio = await this.productoServicioService.actualizar(id, actualizarDto);
+    
+    return productoServicio;
   }
 
   @Delete(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @HttpCode(HttpStatus.NO_CONTENT)
+  @Audit({ 
+    action: 'DELETE', 
+    entityType: 'ProductoServicio',
+    description: 'Producto/Servicio eliminado en el sistema',
+    includeRelations: true,
+    sensitiveFields: ['password', 'token']
+  })
   @ApiOperation({ 
     summary: 'Eliminar un producto o servicio',
     description: 'Elimina un producto o servicio (soft delete)'
@@ -231,11 +263,19 @@ export class ProductoServicioController {
   @ApiResponse({ status: 204, description: 'Producto/Servicio eliminado exitosamente' })
   @ApiResponse({ status: 404, description: 'Producto/Servicio no encontrado' })
   async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.productoServicioService.eliminar(id);
+    await this.productoServicioService.eliminar(id);
+    
   }
 
   @Post(':id/restaurar')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+      @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'ProductoServicio',
+        description: 'Producto/Servicio restaurado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
   @ApiOperation({ 
     summary: 'Restaurar un producto o servicio',
     description: 'Restaura un producto o servicio eliminado'
@@ -252,11 +292,20 @@ export class ProductoServicioController {
   })
   @ApiResponse({ status: 404, description: 'Producto/Servicio no encontrado' })
   async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<ProductoServicio> {
-    return this.productoServicioService.restaurar(id);
+    const productoServicio = await this.productoServicioService.restaurar(id);
+    
+    return productoServicio;
   }
 
   @Patch(':id/estado')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+      @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'ProductoServicio',
+        description: 'Estado activo del producto/servicio cambiado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
   @ApiOperation({ 
     summary: 'Cambiar estado activo de un producto o servicio',
     description: 'Cambia el estado activo de un producto o servicio'
@@ -283,6 +332,9 @@ export class ProductoServicioController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('activo', ParseBoolPipe) activo: boolean,
   ): Promise<ProductoServicio> {
-    return this.productoServicioService.cambiarEstadoActivo(id, activo);
+    const productoServicio = await this.productoServicioService.cambiarEstadoActivo(id, activo);
+    
+    
+    return productoServicio;
   }
 }

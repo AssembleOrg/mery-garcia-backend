@@ -21,6 +21,7 @@ import {
     ApiBearerAuth,
 } from '@nestjs/swagger';
 import { PrepagoGuardadoService } from './prepago-guardado.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { CrearPrepagoGuardadoDto } from './dto/crear-prepago-guardado.dto';
 import { ActualizarPrepagoGuardadoDto } from './dto/actualizar-prepago-guardado.dto';
 import { FiltrarPrepagosGuardadosDto } from './dto/filtrar-prepagos-guardados.dto';
@@ -30,16 +31,29 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
 import { RolPersonal } from '../enums/RolPersonal.enum';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Prepagos Guardados')
 @ApiBearerAuth()
 @Controller('prepagos-guardados')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PrepagoGuardadoController {
-    constructor(private readonly prepagoGuardadoService: PrepagoGuardadoService) {}
+    constructor(
+        private readonly prepagoGuardadoService: PrepagoGuardadoService,
+        private readonly auditoriaService: AuditoriaService,
+    ) {}
 
     @Post()
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'CREATE', 
+        entityType: 'PrepagoGuardado',
+        description: 'Prepago guardado creado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Crear un nuevo prepago guardado',
         description: 'Crea un nuevo prepago guardado para un cliente',
@@ -58,7 +72,9 @@ export class PrepagoGuardadoController {
         description: 'No autorizado',
     })
     async crear(@Body() crearPrepagoGuardadoDto: CrearPrepagoGuardadoDto): Promise<PrepagoGuardado> {
-        return await this.prepagoGuardadoService.crear(crearPrepagoGuardadoDto);
+        const prepagoGuardado = await this.prepagoGuardadoService.crear(crearPrepagoGuardadoDto);
+        
+        return prepagoGuardado;
     }
 
     @Get()
@@ -116,7 +132,7 @@ export class PrepagoGuardadoController {
     @ApiQuery({
         name: 'estado',
         required: false,
-        enum: ['activa', 'utilizada', 'vencida'],
+        enum: ['ACTIVO', 'UTILIZADO', 'VENCIDO'],
         description: 'Filtrar por estado',
     })
     @ApiQuery({
@@ -202,6 +218,13 @@ export class PrepagoGuardadoController {
 
     @Put(':id')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'PrepagoGuardado',
+        description: 'Prepago guardado actualizado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Actualizar prepago guardado',
         description: 'Actualiza los datos de un prepago guardado existente',
@@ -232,14 +255,23 @@ export class PrepagoGuardadoController {
         @Param('id', ParseUUIDPipe) id: string,
         @Body() actualizarPrepagoGuardadoDto: ActualizarPrepagoGuardadoDto,
     ): Promise<PrepagoGuardado> {
-        return await this.prepagoGuardadoService.actualizar(id, actualizarPrepagoGuardadoDto);
+        const prepagoGuardado = await this.prepagoGuardadoService.actualizar(id, actualizarPrepagoGuardadoDto);
+        
+        return prepagoGuardado;
     }
 
     @Put(':id/estado')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'PrepagoGuardado',
+        description: 'Estado del prepago guardado cambiado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Cambiar estado del prepago guardado',
-        description: 'Cambia el estado de un prepago guardado (activa, utilizada, vencida)',
+        description: 'Cambia el estado de un prepago guardado (ACTIVO, UTILIZADO, VENCIDO)',
     })
     @ApiParam({
         name: 'id',
@@ -267,12 +299,21 @@ export class PrepagoGuardadoController {
         @Param('id', ParseUUIDPipe) id: string,
         @Body() cambiarEstadoPrepagoDto: CambiarEstadoPrepagoDto,
     ): Promise<PrepagoGuardado> {
-        return await this.prepagoGuardadoService.cambiarEstado(id, cambiarEstadoPrepagoDto);
+        const prepagoGuardado = await this.prepagoGuardadoService.cambiarEstado(id, cambiarEstadoPrepagoDto);
+        
+        return prepagoGuardado;
     }
 
     @Delete(':id')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
     @HttpCode(HttpStatus.NO_CONTENT)
+    @Audit({ 
+        action: 'DELETE', 
+        entityType: 'PrepagoGuardado',
+        description: 'Prepago guardado eliminado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Eliminar prepago guardado',
         description: 'Elimina un prepago guardado (soft delete)',
@@ -296,10 +337,18 @@ export class PrepagoGuardadoController {
     })
     async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
         await this.prepagoGuardadoService.eliminar(id);
+        
     }
 
     @Post(':id/restaurar')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'PrepagoGuardado',
+        description: 'Prepago guardado restaurado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Restaurar prepago guardado eliminado',
         description: 'Restaura un prepago guardado que fue eliminado (soft delete)',
@@ -327,7 +376,10 @@ export class PrepagoGuardadoController {
         description: 'No autorizado',
     })
     async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<PrepagoGuardado> {
-        return await this.prepagoGuardadoService.restaurar(id);
+        const prepagoGuardado = await this.prepagoGuardadoService.restaurar(id);
+        
+        
+        return prepagoGuardado;
     }
 
     @Get('cliente/:clienteId')

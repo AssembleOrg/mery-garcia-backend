@@ -2,6 +2,7 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import * as path from 'path';
 
 import supabaseConfig from './config/supabase.config';
@@ -11,6 +12,7 @@ import digitalOceanConfig from './config/digitalOcean.config';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditInterceptor } from './interceptors/audit.interceptor';
 
 import { PersonalModule } from './personal/personal.module';
 import { ClienteModule } from './cliente/cliente.module';
@@ -19,6 +21,7 @@ import { AuthModule } from './auth/auth.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { ConfigModule as SistemaConfigModule } from './config/config.module';
 import { CommonModule } from './common/common.module';
+import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.module';
 
 @Module({
   imports: [
@@ -63,9 +66,16 @@ import { CommonModule } from './common/common.module';
     AuditoriaModule,
     SistemaConfigModule,
     CommonModule,
+    PrepagoGuardadoModule,
   ],
   controllers: [AppController],
-  providers: [AppService, ],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
+    },
+  ],
 })
 export class AppModule implements OnModuleInit {
   constructor(private readonly config: ConfigService) { }

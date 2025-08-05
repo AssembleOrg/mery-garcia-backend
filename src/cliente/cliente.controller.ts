@@ -21,6 +21,7 @@ import {
     ApiBearerAuth,
 } from '@nestjs/swagger';
 import { ClienteService } from './cliente.service';
+import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { CrearClienteDto } from './dto/crear-cliente.dto';
 import { ActualizarClienteDto } from './dto/actualizar-cliente.dto';
 import { FiltrarClientesDto } from './dto/filtrar-clientes.dto';
@@ -29,16 +30,29 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
 import { RolPersonal } from '../enums/RolPersonal.enum';
+import { TipoAccion } from 'src/enums/TipoAccion.enum';
+import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
+import { Audit } from 'src/decorators/audit.decorator';
 
 @ApiTags('Clientes')
 @ApiBearerAuth()
 @Controller('clientes')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ClienteController {
-    constructor(private readonly clienteService: ClienteService) {}
+    constructor(
+        private readonly clienteService: ClienteService,
+        private readonly auditoriaService: AuditoriaService,
+    ) {}
 
     @Post()
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'CREATE', 
+        entityType: 'Cliente',
+        description: 'Cliente creado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Crear un nuevo cliente',
         description: 'Crea un nuevo cliente en el sistema',
@@ -57,7 +71,9 @@ export class ClienteController {
         description: 'No autorizado',
     })
     async crear(@Body() crearClienteDto: CrearClienteDto): Promise<Cliente> {
-        return await this.clienteService.crear(crearClienteDto);
+        const cliente = await this.clienteService.crear(crearClienteDto);
+        
+        return cliente;
     }
 
     @Get()
@@ -190,6 +206,13 @@ export class ClienteController {
 
     @Put(':id')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'Cliente',
+        description: 'Cliente actualizado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Actualizar cliente',
         description: 'Actualiza los datos de un cliente existente',
@@ -220,12 +243,22 @@ export class ClienteController {
         @Param('id', ParseUUIDPipe) id: string,
         @Body() actualizarClienteDto: ActualizarClienteDto,
     ): Promise<Cliente> {
-        return await this.clienteService.actualizar(id, actualizarClienteDto);
+        const clienteActualizado = await this.clienteService.actualizar(id, actualizarClienteDto);
+
+        
+        return clienteActualizado;
     }
 
     @Delete(':id')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
     @HttpCode(HttpStatus.NO_CONTENT)
+    @Audit({ 
+        action: 'DELETE', 
+        entityType: 'Cliente',
+        description: 'Cliente eliminado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Eliminar cliente',
         description: 'Elimina un cliente (soft delete)',
@@ -249,10 +282,18 @@ export class ClienteController {
     })
     async eliminar(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
         await this.clienteService.eliminar(id);
+        
     }
 
     @Post(':id/restaurar')
     @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @Audit({ 
+        action: 'UPDATE', 
+        entityType: 'Cliente',
+        description: 'Cliente restaurado en el sistema',
+        includeRelations: true,
+        sensitiveFields: ['password', 'token']
+    })
     @ApiOperation({
         summary: 'Restaurar cliente eliminado',
         description: 'Restaura un cliente que fue eliminado (soft delete)',
@@ -280,7 +321,9 @@ export class ClienteController {
         description: 'No autorizado',
     })
     async restaurar(@Param('id', ParseUUIDPipe) id: string): Promise<Cliente> {
-        return await this.clienteService.restaurar(id);
+        const clienteRestaurado = await this.clienteService.restaurar(id);
+        
+        return clienteRestaurado;
     }
 
     @Get('estadisticas/resumen')

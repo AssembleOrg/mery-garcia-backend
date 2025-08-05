@@ -92,13 +92,7 @@ export class ProductoServicioService {
       
       const guardado = await this.productoServicioRepository.save(productoServicio);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_CREADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: guardado.id,
-        descripcion: `Producto/Servicio creado: ${guardado.nombre}`,
-      });
+
 
       this.logger.log(`Producto/Servicio creado: ${guardado.id} - ${guardado.nombre}`);
       return guardado;
@@ -207,13 +201,7 @@ export class ProductoServicioService {
       Object.assign(productoServicio, actualizarDto);
       const actualizado = await this.productoServicioRepository.save(productoServicio);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: actualizado.id,
-        descripcion: `Producto/Servicio actualizado: ${actualizado.nombre}`,
-      });
+
 
       this.logger.log(`Producto/Servicio actualizado: ${actualizado.id} - ${actualizado.nombre}`);
       return actualizado;
@@ -229,12 +217,7 @@ export class ProductoServicioService {
       await this.productoServicioRepository.softRemove(productoServicio);
 
       // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_ELIMINADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: productoServicio.id,
-        descripcion: `Producto/Servicio eliminado: ${productoServicio.nombre}`,
-      });
+
 
       this.logger.log(`Producto/Servicio eliminado: ${id}`);
     } catch (error) {
@@ -256,14 +239,6 @@ export class ProductoServicioService {
 
       await this.productoServicioRepository.restore(id);
 
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: productoServicio.id,
-        descripcion: `Producto/Servicio restaurado: ${productoServicio.nombre}`,
-      });
-
       this.logger.log(`Producto/Servicio restaurado: ${id}`);
       return await this.obtenerPorId(id);
     } catch (error) {
@@ -278,14 +253,6 @@ export class ProductoServicioService {
       productoServicio.activo = activo;
       
       const actualizado = await this.productoServicioRepository.save(productoServicio);
-
-      // Registrar auditoría
-      await this.auditoriaService.registrar({
-        tipoAccion: TipoAccion.COMISION_MODIFICADA,
-        modulo: ModuloSistema.COMANDA,
-        entidadId: actualizado.id,
-        descripcion: `Estado de Producto/Servicio cambiado a: ${activo ? 'activo' : 'inactivo'}`,
-      });
 
       this.logger.log(`Estado de Producto/Servicio cambiado: ${id} - activo: ${activo}`);
       return actualizado;
