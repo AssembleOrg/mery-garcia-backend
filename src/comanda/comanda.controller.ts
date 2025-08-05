@@ -231,6 +231,7 @@ export class ComandaController {
     type: Comanda,
   })
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o número de comanda duplicado' })
   async actualizar(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() actualizarComandaDto: CrearComandaDto,

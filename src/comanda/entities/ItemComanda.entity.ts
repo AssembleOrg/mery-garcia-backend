@@ -8,13 +8,12 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     DeleteDateColumn,
-    RelationId,
 } from 'typeorm';   
 import { Comanda } from './Comanda.entity';
 import { TipoItem } from './TipoItem.entity';
-import { ProductoServicio } from './productoServicio.entity';
 import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
 import { Trabajador } from 'src/personal/entities/Trabajador.entity';
+import { ProductoServicio } from './productoServicio.entity';
 
 @Entity({ name: 'item_comanda' })
 export class ItemComanda {

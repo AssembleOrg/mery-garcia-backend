@@ -50,7 +50,6 @@ export class Comanda {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index({ unique: true })
   @Column({ length: 30 })
   numero: string;
 
