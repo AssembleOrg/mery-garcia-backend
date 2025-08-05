@@ -233,7 +233,7 @@ export class ComandaController {
   @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
   async actualizar(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() actualizarComandaDto: ActualizarComandaDto,
+    @Body() actualizarComandaDto: CrearComandaDto,
   ): Promise<Comanda> {
     return await this.comandaService.actualizar(id, actualizarComandaDto);
   }
