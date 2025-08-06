@@ -255,8 +255,47 @@ export class ClienteService {
       }
     }
 
-    Object.assign(cliente, actualizarClienteDto);
+    console.table(actualizarClienteDto);
+    
+    // Extraer señas del DTO
+    const { señaUsd, señaArs, ...camposCliente } = actualizarClienteDto;
+    
+    // Actualizar campos del cliente
+    Object.assign(cliente, camposCliente);
     const clienteActualizado = await this.clienteRepository.save(cliente);
+
+    // Crear prepagos guardados si se proporcionan señas
+    if (señaUsd || señaArs) {
+      const prepagosGuardados: PrepagoGuardado[] = [];
+
+      if (señaUsd) {
+        console.log('actualizarClienteDto.señaUsd', señaUsd);
+        const prepagoGuardado = this.prepagoGuardadoRepository.create({
+          monto: señaUsd,
+          moneda: TipoMoneda.USD,
+          estado: EstadoPrepago.ACTIVA,
+          cliente: clienteActualizado,
+          observaciones: 'Seña USD actualizada',
+        });
+        prepagosGuardados.push(prepagoGuardado);
+      }
+
+      if (señaArs) {
+        const prepagoGuardado = this.prepagoGuardadoRepository.create({
+          monto: señaArs,
+          moneda: TipoMoneda.ARS,
+          estado: EstadoPrepago.ACTIVA,
+          cliente: clienteActualizado,
+          observaciones: 'Seña ARS actualizada',
+        });
+        prepagosGuardados.push(prepagoGuardado);
+      }
+
+      if (prepagosGuardados.length > 0) {
+        await this.prepagoGuardadoRepository.save(prepagosGuardados);
+      }
+    }
+
     return await this.obtenerPorId(clienteActualizado.id);
   }
 

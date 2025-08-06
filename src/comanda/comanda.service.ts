@@ -296,8 +296,6 @@ export class ComandaService {
       order as 'ASC' | 'DESC',
     );
 
-    console.log(queryBuilder.getSql());
-
     const [comandas, total] = await queryBuilder
       .skip(skip)
       .take(limit)

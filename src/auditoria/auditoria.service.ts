@@ -136,10 +136,6 @@ export class AuditoriaService {
       orderDirection as 'ASC' | 'DESC',
     );
 
-    console.log('Query SQL:', queryBuilder.getSql());
-    console.log('Query Parameters:', queryBuilder.getParameters());
-    console.log('Skip:', skip, 'Limit:', limit);
-
     const [auditorias, total] = await queryBuilder
       .skip(skip)
       .take(limit)

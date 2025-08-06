@@ -51,16 +51,6 @@ export class AuditInterceptor implements NestInterceptor {
       userId = (request as any)?.user?.sub || (request as any)?.user?.id || (request as any)?.user?.userId;
     }
 
-    console.log('Audit Debug:', {
-      action,
-      entityType,
-      entityId,
-      userId,
-      user: user,
-      method,
-      url
-    });
-
     if (!action || !entityType) {
       return next.handle();
     }
