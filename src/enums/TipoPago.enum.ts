@@ -1,6 +1,8 @@
 export enum TipoPago {
-    EFECTIVO = 'efectivo',
-    TARJETA = 'tarjeta',
-    TRANSFERENCIA = 'transferencia',
-    GIFT_CARD = 'gift_card',
+    EFECTIVO = 'EFECTIVO',
+    TARJETA = 'TARJETA',
+    TRANSFERENCIA = 'TRANSFERENCIA',
+    CHEQUE = 'CHEQUE',
+    QR = 'QR',
+    GIFT_CARD = 'GIFT_CARD',
 }
