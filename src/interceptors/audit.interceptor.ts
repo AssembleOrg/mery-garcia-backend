@@ -62,7 +62,6 @@ export class AuditInterceptor implements NestInterceptor {
     });
 
     if (!action || !entityType) {
-      console.log('Skipping audit - missing action or entityType');
       return next.handle();
     }
 

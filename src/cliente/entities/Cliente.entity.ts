@@ -23,7 +23,6 @@ export class Cliente {
         type: 'varchar',
         length: 20,
         nullable: true,
-        unique: true,
         default: null,
     })
     cuit?: string;
@@ -32,7 +31,6 @@ export class Cliente {
         type: 'varchar',
         length: 20,
         nullable: true,
-        unique: true,
         default: null,
     })
     dni?: string;
