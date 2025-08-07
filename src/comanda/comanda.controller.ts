@@ -259,7 +259,7 @@ export class ComandaController {
   @ApiResponse({ status: 400, description: 'Datos inválidos o número de comanda duplicado' })
   async actualizar(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() actualizarComandaDto: CrearComandaDto,
+    @Body() actualizarComandaDto: Partial<CrearComandaDto>,
   ): Promise<Comanda> {
     const comanda = await this.comandaService.actualizar(id, actualizarComandaDto);
     

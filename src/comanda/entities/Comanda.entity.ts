@@ -17,7 +17,6 @@ import {
 } from 'typeorm';
 import { Personal } from 'src/personal/entities/Personal.entity';
 import { Cliente } from 'src/cliente/entities/Cliente.entity';
-import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { Descuento } from 'src/comanda/entities/descuento.entity';
 import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
 import { NumericTransformer } from 'src/common/transformers/numeric.transformer';
@@ -40,8 +39,8 @@ export enum EstadoDeComanda {
 }
 
 export enum Caja {
-    CAJA_1 = 'caja_1',
-    CAJA_2 = 'caja_2',
+  CAJA_1 = 'caja_1',
+  CAJA_2 = 'caja_2',
 }
 
 @Entity({ name: 'comandas' })
@@ -107,11 +106,6 @@ export class Comanda {
   @RelationId((comanda: Comanda) => comanda.movimiento)
   movimientoId: string;
 
-  @OneToMany(() => MetodoPago, (mp) => mp.comanda, {
-    cascade: true,
-  })
-  metodosPago: MetodoPago[];
-
   @OneToMany(() => Descuento, (d) => d.comanda, {
     cascade: true,
   })
@@ -137,13 +131,31 @@ export class Comanda {
   @Column({ type: 'boolean', default: false })
   usuarioConsumePrepago: boolean;
 
-  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
+  @Column({
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: NumericTransformer,
+  })
   precioDolar: number;
 
-  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
+  @Column({
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: NumericTransformer,
+  })
   precioPesos: number;
 
-  @Column({ type: 'numeric', precision: 20, scale: 2, default: 0, transformer: NumericTransformer })
+  @Column({
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    transformer: NumericTransformer,
+  })
   valorDolar: number;
 
   @Column({ type: 'text', nullable: true })

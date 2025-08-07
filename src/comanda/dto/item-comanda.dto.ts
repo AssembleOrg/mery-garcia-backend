@@ -7,8 +7,11 @@ import {
   MaxLength,
   Min,
   IsNotEmpty,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { MetodoPagoDto } from './metodoPago.dto';
 
 export class CrearItemComandaDto {
   @ApiProperty({
@@ -95,6 +98,23 @@ export class CrearItemComandaDto {
   @Min(0)
   @Type(() => Number)
   subtotal?: number;
+
+  @ApiPropertyOptional({
+    description: 'Métodos de pago del item',
+    example: [{
+      tipo: 'EFECTIVO',
+      monto: 100,
+      montoFinal: 90,
+      descuentoGlobalPorcentaje: 10,
+      moneda: 'USD',
+      recargoPorcentaje: 0
+    }]
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MetodoPagoDto)
+  metodosPago?: MetodoPagoDto[];
 }
 
 export class ActualizarItemComandaDto extends PartialType(CrearItemComandaDto) {}

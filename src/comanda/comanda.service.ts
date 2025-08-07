@@ -24,7 +24,6 @@ import { Trabajador } from 'src/personal/entities/Trabajador.entity';
 import { Personal } from 'src/personal/entities/Personal.entity';
 import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
-import { ActualizarComandaDto } from './dto/actualizar-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { TipoAccion } from 'src/enums/TipoAccion.enum';
@@ -38,6 +37,7 @@ import { Caja } from 'src/enums/Caja.enum';
 import { Egreso } from './entities/egreso.entity';
 import { CrearEgresoDto } from './dto/crear-egreso.dto';
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
+import { TipoItem } from './entities/TipoItem.entity';
 
 export interface ComandasPaginadas {
   data: Comanda[];
@@ -127,74 +127,76 @@ export class ComandaService {
 
       comanda = await queryRunner.manager.save(Comanda, comanda);
 
-      if (crearComandaDto.items && crearComandaDto.items.length > 0) {
-        if (crearComandaDto.items.some((item) => !item.trabajadorId)) {
-          throw new BadRequestException(
-            'El trabajador es requerido para cada item',
-          );
-        }
-        if (crearComandaDto.items.some((item) => !item.productoServicioId)) {
-          throw new BadRequestException(
-            'El producto es requerido para cada item',
-          );
-        }
-        const itemsComanda = crearComandaDto.items.map((item) => {
-          const itemComanda = new ItemComanda();
-          itemComanda.nombre = item.nombre;
-          itemComanda.precio = item.precio;
-          itemComanda.cantidad = item.cantidad;
-          itemComanda.descuento = item.descuento ?? 0;
-          itemComanda.subtotal = item.subtotal ?? 0;
-          itemComanda.trabajador = { id: item.trabajadorId! } as Trabajador;
-          itemComanda.productoServicio = {
-            id: item.productoServicioId!,
-          } as ProductoServicio;
-          return queryRunner.manager.save(ItemComanda, itemComanda);
+      if (
+        crearComandaDto.items &&
+        crearComandaDto.items.length > 0
+      ) {
+        const items = crearComandaDto.items.map(async (itemDto) => {
+          const item = new ItemComanda();
+          item.nombre = itemDto.nombre;
+          item.precio = itemDto.precio;
+          item.cantidad = itemDto.cantidad;
+          item.descuento = itemDto.descuento ?? 0;
+          item.subtotal = itemDto.subtotal ?? itemDto.precio * itemDto.cantidad;
+          item.comanda = comanda;
+
+          if (itemDto.productoServicioId) {
+            item.productoServicio = { id: itemDto.productoServicioId } as ProductoServicio;
+          }
+
+          if (itemDto.trabajadorId) {
+            item.trabajador = { id: itemDto.trabajadorId } as Trabajador;
+          }
+
+          if (itemDto.tipoId) {
+            item.tipo = { id: itemDto.tipoId } as TipoItem;
+          }
+
+          const itemGuardado = await queryRunner.manager.save(ItemComanda, item);
+
+          // Crear métodos de pago para este item si se proporcionan
+          if (itemDto.metodosPago && itemDto.metodosPago.length > 0) {
+            const metodosPago = itemDto.metodosPago.map((metodoPago) => {
+              const metodoPagoItem = new MetodoPago();
+              metodoPagoItem.tipo = metodoPago.tipo;
+              metodoPagoItem.monto = metodoPago.monto;
+              metodoPagoItem.montoFinal = metodoPago.montoFinal;
+              metodoPagoItem.descuentoGlobalPorcentaje =
+                metodoPago.descuentoGlobalPorcentaje;
+              metodoPagoItem.moneda = metodoPago.moneda;
+              metodoPagoItem.recargoPorcentaje =
+                metodoPago.recargoPorcentaje ?? 0;
+              metodoPagoItem.itemComanda = itemGuardado;
+              return queryRunner.manager.save(MetodoPago, metodoPagoItem);
+            });
+
+            await Promise.all(metodosPago);
+          }
+
+          return itemGuardado;
         });
 
-        comanda.items = await Promise.all(itemsComanda);
-
-        if (
-          crearComandaDto.descuentosAplicados &&
-          crearComandaDto.descuentosAplicados.length > 0
-        ) {
-          const descuentos = crearComandaDto.descuentosAplicados.map(
-            (descuento) => {
-              const descuentoComanda = new Descuento();
-              descuentoComanda.montoFijo = descuento.montoFijo;
-              descuentoComanda.porcentaje = descuento.porcentaje;
-              descuentoComanda.nombre = descuento.nombre;
-              descuentoComanda.comanda = comanda;
-              return queryRunner.manager.save(Descuento, descuentoComanda);
-            },
-          );
-
-          comanda.descuentosAplicados = await Promise.all(descuentos);
-        }
+        comanda.items = await Promise.all(items);
       }
 
       if (
-        crearComandaDto.metodosPago &&
-        crearComandaDto.metodosPago.length > 0
+        crearComandaDto.descuentosAplicados &&
+        crearComandaDto.descuentosAplicados.length > 0
       ) {
-        const metodosPago = crearComandaDto.metodosPago.map((metodoPago) => {
-          const metodoPagoComanda = new MetodoPago();
-          metodoPagoComanda.tipo = metodoPago.tipo;
-          metodoPagoComanda.monto = metodoPago.monto;
-          metodoPagoComanda.montoFinal = metodoPago.montoFinal;
-          metodoPagoComanda.descuentoGlobalPorcentaje =
-            metodoPago.descuentoGlobalPorcentaje;
-          metodoPagoComanda.moneda = metodoPago.moneda;
-          metodoPagoComanda.recargoPorcentaje =
-            metodoPago.recargoPorcentaje ?? 0;
-          metodoPagoComanda.comanda = comanda;
-          return queryRunner.manager.save(MetodoPago, metodoPagoComanda);
-        });
+        const descuentos = crearComandaDto.descuentosAplicados.map(
+          (descuentoDto) => {
+            const descuento = new Descuento();
+            descuento.nombre = descuentoDto.nombre;
+            descuento.descripcion = descuentoDto.descripcion;
+            descuento.porcentaje = descuentoDto.porcentaje;
+            descuento.montoFijo = descuentoDto.montoFijo;
+            descuento.comanda = comanda;
+            return queryRunner.manager.save(Descuento, descuento);
+          },
+        );
 
-        comanda.metodosPago = await Promise.all(metodosPago);
+        comanda.descuentosAplicados = await Promise.all(descuentos);
       }
-
-      comanda = await queryRunner.manager.save(Comanda, comanda);
 
       await queryRunner.commitTransaction();
 
@@ -219,8 +221,8 @@ export class ComandaService {
       relations: [
         'cliente',
         'creadoPor',
-        'metodosPago',
         'items',
+        'items.metodosPago',
         'items.productoServicio',
         'items.trabajador',
         'descuentosAplicados',
@@ -246,8 +248,8 @@ export class ComandaService {
       .createQueryBuilder('comanda')
       .leftJoinAndSelect('comanda.cliente', 'cliente')
       .leftJoinAndSelect('comanda.creadoPor', 'creadoPor')
-      .leftJoinAndSelect('comanda.metodosPago', 'metodosPago')
       .leftJoinAndSelect('comanda.items', 'items')
+      .leftJoinAndSelect('items.metodosPago', 'metodosPago')
       .leftJoinAndSelect('items.productoServicio', 'productoServicio')
       .leftJoinAndSelect('items.tipo', 'tipo')
       .leftJoinAndSelect('items.trabajador', 'trabajador')
@@ -320,7 +322,7 @@ export class ComandaService {
       relations: [
         'cliente',
         'creadoPor',
-        'metodosPago',
+        'items.metodosPago',
         'items',
         'items.productoServicio',
         'items.trabajador',
@@ -351,7 +353,7 @@ export class ComandaService {
 
   async actualizar(
     id: string,
-    actualizarComandaDto: CrearComandaDto,
+    actualizarComandaDto: Partial<CrearComandaDto>,
   ): Promise<Comanda> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -359,149 +361,184 @@ export class ComandaService {
 
     try {
       // Verificar que la comanda existe
-      const comandaExistente = await queryRunner.manager.findOne(Comanda, {
+      const comanda = await queryRunner.manager.findOne(Comanda, {
         where: { id },
+        relations: [
+          'cliente',
+          'creadoPor',
+          'items',
+          'items.metodosPago',
+          'items.productoServicio',
+          'items.trabajador',
+          'descuentosAplicados',
+        ],
       });
 
-      if (!comandaExistente) {
+      if (!comanda) {
         throw new NotFoundException(`Comanda con ID ${id} no encontrada`);
       }
-
-      // 1. Eliminar todas las relaciones existentes
-      await queryRunner.manager.delete(ItemComanda, { comanda: { id } });
-      await queryRunner.manager.delete(Descuento, { comanda: { id } });
-      await queryRunner.manager.delete(MetodoPago, { comanda: { id } });
-
-      // 2. Eliminar la comanda actual
-      await queryRunner.manager.delete(Comanda, { id });
-
-      // 3. Crear la comanda completamente nueva con el mismo ID
-      let nuevaComanda = new Comanda();
-      nuevaComanda.id = id; // Mantener el mismo ID
-      nuevaComanda.numero = actualizarComandaDto.numero;
-      nuevaComanda.tipoDeComanda = actualizarComandaDto.tipoDeComanda;
-      nuevaComanda.estadoDeComanda = actualizarComandaDto.estadoDeComanda;
-      nuevaComanda.caja = actualizarComandaDto.caja;
-      nuevaComanda.precioDolar = actualizarComandaDto.precioDolar;
-      nuevaComanda.precioPesos = actualizarComandaDto.precioPesos;
-      nuevaComanda.valorDolar = actualizarComandaDto.valorDolar;
-      nuevaComanda.observaciones = actualizarComandaDto.observaciones;
-      nuevaComanda.usuarioConsumePrepago = actualizarComandaDto.usuarioConsumePrepago;
-      nuevaComanda.createdAt = comandaExistente.createdAt; // Mantener fecha de creación original
-      nuevaComanda.updatedAt = new Date(); // Actualizar fecha de modificación
-
-      // 4. Manejar cliente
-      if (actualizarComandaDto.clienteId) {
-        const cliente = await queryRunner.manager.findOne(Cliente, {
-          where: { id: actualizarComandaDto.clienteId },
-        });
-        if (!cliente) {
-          throw new NotFoundException(`Cliente no encontrado`);
-        }
-        
-        if (actualizarComandaDto.usuarioConsumePrepago) {
-          // Consumir prepago
-          const prepago = await queryRunner.manager.findOne(PrepagoGuardado, {
-            where: {
-              cliente: { id: actualizarComandaDto.clienteId },
-              estado: EstadoPrepago.ACTIVA,
-            },
-          });
-          if (!prepago) {
-            throw new NotFoundException(`No hay seña activa disponible`);
-          }
-          prepago.estado = EstadoPrepago.UTILIZADA;
-          await queryRunner.manager.save(PrepagoGuardado, prepago);
-        }
-        nuevaComanda.cliente = cliente;
+ 
+      // 1. Actualizar campos básicos de la comanda solo si existen en el DTO
+      if (actualizarComandaDto.numero !== undefined) {
+        comanda.numero = actualizarComandaDto.numero;
+      }
+      if (actualizarComandaDto.tipoDeComanda !== undefined) {
+        comanda.tipoDeComanda = actualizarComandaDto.tipoDeComanda;
+      }
+      if (actualizarComandaDto.estadoDeComanda !== undefined) {
+        comanda.estadoDeComanda = actualizarComandaDto.estadoDeComanda;
+      }
+      if (actualizarComandaDto.caja !== undefined) {
+        comanda.caja = actualizarComandaDto.caja;
+      }
+      if (actualizarComandaDto.precioDolar !== undefined) {
+        comanda.precioDolar = actualizarComandaDto.precioDolar;
+      }
+      if (actualizarComandaDto.precioPesos !== undefined) {
+        comanda.precioPesos = actualizarComandaDto.precioPesos;
+      }
+      if (actualizarComandaDto.valorDolar !== undefined) {
+        comanda.valorDolar = actualizarComandaDto.valorDolar;
+      }
+      if (actualizarComandaDto.observaciones !== undefined) {
+        comanda.observaciones = actualizarComandaDto.observaciones;
+      }
+      if (actualizarComandaDto.usuarioConsumePrepago !== undefined) {
+        comanda.usuarioConsumePrepago = actualizarComandaDto.usuarioConsumePrepago;
       }
 
-      // 5. Manejar creadoPor
-      if (actualizarComandaDto.creadoPorId) {
+      // 2. Actualizar cliente solo si se proporciona
+      if (actualizarComandaDto.clienteId !== undefined) {
+        if (actualizarComandaDto.clienteId) {
+          const cliente = await queryRunner.manager.findOne(Cliente, {
+            where: { id: actualizarComandaDto.clienteId },
+          });
+          if (!cliente) {
+            throw new NotFoundException(`Cliente no encontrado`);
+          }
+          comanda.cliente = cliente;
+        } else {
+          comanda.cliente = undefined;
+        }
+      }
+
+      // 3. Actualizar creadoPor solo si se proporciona
+      if (actualizarComandaDto.creadoPorId !== undefined) {
         const creadoPor = await queryRunner.manager.findOne(Personal, {
           where: { id: actualizarComandaDto.creadoPorId },
         });
         if (!creadoPor) {
           throw new NotFoundException(`Personal no encontrado`);
         }
-        nuevaComanda.creadoPor = creadoPor;
+        comanda.creadoPor = creadoPor;
       }
 
-      // 6. Guardar la nueva comanda
-      nuevaComanda = await queryRunner.manager.save(Comanda, nuevaComanda);
-
-      // 7. Crear items si existen
-      if (actualizarComandaDto.items && actualizarComandaDto.items.length > 0) {
-        if (actualizarComandaDto.items.some((item) => !item.trabajadorId)) {
-          throw new BadRequestException(
-            'El trabajador es requerido para cada item',
-          );
-        }
-        if (actualizarComandaDto.items.some((item) => !item.productoServicioId)) {
-          throw new BadRequestException(
-            'El producto es requerido para cada item',
-          );
-        }
-        
-        const itemsComanda = actualizarComandaDto.items.map((item) => {
-          const itemComanda = new ItemComanda();
-          itemComanda.nombre = item.nombre;
-          itemComanda.precio = item.precio;
-          itemComanda.cantidad = item.cantidad;
-          itemComanda.descuento = item.descuento ?? 0;
-          itemComanda.subtotal = item.subtotal ?? 0;
-          itemComanda.trabajador = { id: item.trabajadorId! } as Trabajador;
-          itemComanda.productoServicio = {
-            id: item.productoServicioId!,
-          } as ProductoServicio;
-          itemComanda.comanda = nuevaComanda;
-          return queryRunner.manager.save(ItemComanda, itemComanda);
-        });
-
-        nuevaComanda.items = await Promise.all(itemsComanda);
-      }
-
-      // 8. Crear descuentos si existen
-      if (actualizarComandaDto.descuentosAplicados && actualizarComandaDto.descuentosAplicados.length > 0) {
-        const descuentos = actualizarComandaDto.descuentosAplicados.map(
-          (descuento) => {
-            const descuentoComanda = new Descuento();
-            descuentoComanda.montoFijo = descuento.montoFijo;
-            descuentoComanda.porcentaje = descuento.porcentaje;
-            descuentoComanda.nombre = descuento.nombre;
-            descuentoComanda.comanda = nuevaComanda;
-            return queryRunner.manager.save(Descuento, descuentoComanda);
+      // 4. Manejar prepago si se consume
+      if (actualizarComandaDto.usuarioConsumePrepago && comanda.cliente) {
+        const prepago = await queryRunner.manager.findOne(PrepagoGuardado, {
+          where: {
+            cliente: { id: comanda.cliente.id },
+            estado: EstadoPrepago.ACTIVA,
           },
-        );
-
-        nuevaComanda.descuentosAplicados = await Promise.all(descuentos);
-      }
-
-      // 9. Crear métodos de pago si existen
-      if (actualizarComandaDto.metodosPago && actualizarComandaDto.metodosPago.length > 0) {
-        const metodosPago = actualizarComandaDto.metodosPago.map((metodoPago) => {
-          const metodoPagoComanda = new MetodoPago();
-          metodoPagoComanda.tipo = metodoPago.tipo;
-          metodoPagoComanda.monto = metodoPago.monto;
-          metodoPagoComanda.montoFinal = metodoPago.montoFinal;
-          metodoPagoComanda.descuentoGlobalPorcentaje =
-            metodoPago.descuentoGlobalPorcentaje;
-          metodoPagoComanda.moneda = metodoPago.moneda;
-          metodoPagoComanda.recargoPorcentaje =
-            metodoPago.recargoPorcentaje ?? 0;
-          metodoPagoComanda.comanda = nuevaComanda;
-          return queryRunner.manager.save(MetodoPago, metodoPagoComanda);
         });
-
-        nuevaComanda.metodosPago = await Promise.all(metodosPago);
+        if (!prepago) {
+          throw new NotFoundException(`No hay seña activa disponible`);
+        }
+        prepago.estado = EstadoPrepago.UTILIZADA;
+        await queryRunner.manager.save(PrepagoGuardado, prepago);
       }
+
+      // 5. Actualizar items solo si se proporcionan
+      if (actualizarComandaDto.items !== undefined) {
+        // Eliminar items existentes
+        if (comanda.items && comanda.items.length > 0) {
+          await queryRunner.manager.remove(ItemComanda, comanda.items);
+        }
+
+        // Crear nuevos items si se proporcionan
+        if (actualizarComandaDto.items && actualizarComandaDto.items.length > 0) {
+          const items = actualizarComandaDto.items.map(async (itemDto) => {
+            const item = new ItemComanda();
+            item.nombre = itemDto.nombre;
+            item.precio = itemDto.precio;
+            item.cantidad = itemDto.cantidad;
+            item.descuento = itemDto.descuento ?? 0;
+            item.subtotal = itemDto.subtotal ?? itemDto.precio * itemDto.cantidad;
+            item.comanda = comanda;
+
+            if (itemDto.productoServicioId) {
+              item.productoServicio = { id: itemDto.productoServicioId } as ProductoServicio;
+            }
+
+            if (itemDto.trabajadorId) {
+              item.trabajador = { id: itemDto.trabajadorId } as Trabajador;
+            }
+
+            if (itemDto.tipoId) {
+              item.tipo = { id: itemDto.tipoId } as TipoItem;
+            }
+
+            const itemGuardado = await queryRunner.manager.save(ItemComanda, item);
+
+            // Crear métodos de pago para este item si se proporcionan
+            if (itemDto.metodosPago && itemDto.metodosPago.length > 0) {
+              const metodosPago = itemDto.metodosPago.map((metodoPago) => {
+                const metodoPagoItem = new MetodoPago();
+                metodoPagoItem.tipo = metodoPago.tipo;
+                metodoPagoItem.monto = metodoPago.monto;
+                metodoPagoItem.montoFinal = metodoPago.montoFinal;
+                metodoPagoItem.descuentoGlobalPorcentaje =
+                  metodoPago.descuentoGlobalPorcentaje;
+                metodoPagoItem.moneda = metodoPago.moneda;
+                metodoPagoItem.recargoPorcentaje =
+                  metodoPago.recargoPorcentaje ?? 0;
+                metodoPagoItem.itemComanda = itemGuardado;
+                return queryRunner.manager.save(MetodoPago, metodoPagoItem);
+              });
+
+              await Promise.all(metodosPago);
+            }
+
+            return itemGuardado;
+          });
+
+          comanda.items = await Promise.all(items);
+        }
+      }
+
+      // 6. Actualizar descuentos solo si se proporcionan
+      if (actualizarComandaDto.descuentosAplicados !== undefined) {
+        // Eliminar descuentos existentes
+        if (comanda.descuentosAplicados && comanda.descuentosAplicados.length > 0) {
+          await queryRunner.manager.remove(Descuento, comanda.descuentosAplicados);
+        }
+
+        // Crear nuevos descuentos si se proporcionan
+        if (actualizarComandaDto.descuentosAplicados && actualizarComandaDto.descuentosAplicados.length > 0) {
+          const descuentos = actualizarComandaDto.descuentosAplicados.map(
+            (descuentoDto) => {
+              const descuento = new Descuento();
+              descuento.nombre = descuentoDto.nombre;
+              descuento.descripcion = descuentoDto.descripcion;
+              descuento.porcentaje = descuentoDto.porcentaje;
+              descuento.montoFijo = descuentoDto.montoFijo;
+              descuento.comanda = comanda;
+              return queryRunner.manager.save(Descuento, descuento);
+            },
+          );
+
+          comanda.descuentosAplicados = await Promise.all(descuentos);
+        }
+      }
+
+      // 7. Guardar la comanda actualizada
+      const comandaActualizada = await queryRunner.manager.save(Comanda, comanda);
 
       await queryRunner.commitTransaction();
 
-
-      this.logger.log(`Comanda actualizada: ${nuevaComanda.id} - ${nuevaComanda.numero}`);
+      this.logger.log(`Comanda actualizada: ${comandaActualizada.id} - ${comandaActualizada.numero}`);
       
-      return await this.obtenerPorId(nuevaComanda.id);
+      return await this.obtenerPorId(comandaActualizada.id);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`Error actualizando comanda: ${error.message}`, error.stack);
@@ -534,6 +571,7 @@ export class ComandaService {
   }
 
   async crearEgreso(crearEgresoDto: CrearEgresoDto): Promise<Comanda> {
+    console.log(crearEgresoDto);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -630,34 +668,65 @@ export class ComandaService {
         caja: Caja.CAJA_1,
       },
       relations: [
-        'metodosPago',
         'items',
+        'items.metodosPago',
         'items.productoServicio',
         'items.trabajador',
-        'descuentosAplicados',
         'egresos',
       ],
     });
+    console.log(comandas.length, "comandasLength");
+    type Totals = { usd: number; ars: number };
 
-    const totalIngresosARS = comandas.reduce((acc, comanda) => {
-      const totalIngresosARS = comanda.metodosPago.reduce((acc, metodoPago) => {
-        if (metodoPago.moneda === TipoMoneda.ARS) {
-          acc += metodoPago.montoFinal;
-        }
-        return acc;
-      }, 0);
-      return acc + totalIngresosARS;
-    }, 0);
+    const totals: Totals =
+      comandas.reduce<Totals>((acc, comanda) => {
+        const comandaHasUSD =
+          comanda.items?.some(item =>
+            item.metodosPago?.some(mp => mp.moneda === 'USD')
+          ) ?? false;
+    
+        comanda.items?.forEach(item => {
+          item.metodosPago?.forEach(mp => {
+            switch (mp.moneda) {
+              case 'USD':
+                acc.usd += mp.montoFinal ?? 0;
+                break;
+    
+              case 'ARS':
+                // Si la comanda tiene USD, priorizamos montoFinal; si no, monto.
+                const montoARS = comandaHasUSD
+                  ? mp.montoFinal ?? 0
+                  : mp.monto ?? 0;
+                acc.ars += montoARS;
+                break;
+            }
+          });
+        });
 
-    const totalIngresosUSD = comandas.reduce((acc, comanda) => {
-      const totalIngresosUSD = comanda.metodosPago.reduce((acc, metodoPago) => {
-        if (metodoPago.moneda === TipoMoneda.USD) {
-          acc += metodoPago.montoFinal;
-        }
+        const egresosArs = comanda.egresos?.reduce((acc, egreso) => {
+          if (egreso.moneda === TipoMoneda.ARS) {
+            acc += egreso.totalPesos;
+          }
+          return acc;
+        }, 0);
+
+        const egresosUsd = comanda.egresos?.reduce((acc, egreso) => {
+          if (egreso.moneda === TipoMoneda.USD) {
+            acc += egreso.totalDolar;
+          }
+          return acc;
+        }, 0);
+
+        acc.ars -= egresosArs ?? 0;
+        acc.usd -= egresosUsd ?? 0;
+        
         return acc;
-      }, 0);
-      return acc + totalIngresosUSD;
-    }, 0);
+      }, { usd: 0, ars: 0 }) ?? { usd: 0, ars: 0 };
+    
+    const totalIngresosUSD = totals.usd;
+    const totalIngresosARS = totals.ars;
+
+    console.log(totals);
 
     return {
       totalIngresosARS,
@@ -716,8 +785,8 @@ export class ComandaService {
           }),
         },
         relations: [
-          'metodosPago',
           'items',
+          'items.metodosPago',
           'items.productoServicio',
           'items.trabajador',
           'descuentosAplicados',
@@ -734,8 +803,8 @@ export class ComandaService {
           caja: Caja.CAJA_1,
         },
         relations: [
-          'metodosPago',
           'items',
+          'items.metodosPago',
           'items.productoServicio',
           'items.trabajador',
           'descuentosAplicados',
@@ -751,74 +820,79 @@ export class ComandaService {
       return acc;
     }, []);
 
+    console.log(comandas.length)
+
     const helperComandas = comandas.reduce(
       (acc, comanda) => {
-        const egresos = comanda.egresos ?? [];
-
-        const totalEgresosARS = egresos.reduce((acc, egreso) => {
+        /* ---------- Egresos ---------- */
+        let totalEgresosARS = 0;
+        let totalEgresosUSD = 0;
+    
+        (comanda.egresos ?? []).forEach(egreso => {
           if (egreso.moneda === TipoMoneda.ARS) {
-            acc += egreso.totalPesos;
+            totalEgresosARS += egreso.totalPesos ?? 0;
+          } else if (egreso.moneda === TipoMoneda.USD) {
+            totalEgresosUSD += egreso.totalDolar ?? 0;
           }
-          return acc;
-        }, 0);
-        const totalEgresosUSD = egresos.reduce((acc, egreso) => {
-          if (egreso.moneda === TipoMoneda.USD) {
-            acc += egreso.totalDolar;
-          }
-
-          return acc;
-        }, 0);
-
+        });
+    
         acc.totalEgresosARS += totalEgresosARS;
         acc.totalEgresosUSD += totalEgresosUSD;
-
+    
+        /* ---------- Estado de comanda ---------- */
         if (comanda.estadoDeComanda === EstadoDeComanda.VALIDADO) {
           acc.totalCompletados++;
         } else if (comanda.estadoDeComanda === EstadoDeComanda.PENDIENTE) {
           acc.totalPendientes++;
         }
-
-        const totalIngresosARS = comanda.metodosPago.reduce(
-          (acc, metodoPago) => {
-            if (metodoPago.moneda === TipoMoneda.ARS) {
-              acc.total += metodoPago.monto;
-              acc.neto += metodoPago.montoFinal;
+    
+        /* ---------- Ingresos (USD + ARS en un solo recorrido) ---------- */
+        const ingresosARS = { total: 0, neto: 0, totalTransacciones: 0 };
+        const ingresosUSD = { total: 0, neto: 0, totalTransacciones: 0 };
+    
+        const comandaHasUSD =
+          comanda.items?.some(item =>
+            item.metodosPago?.some(mp => mp.moneda === TipoMoneda.USD)
+          ) ?? false;
+    
+        comanda.items?.forEach(item => {
+          item.metodosPago?.forEach(mp => {
+            switch (mp.moneda) {
+              case TipoMoneda.USD: {
+                const monto = mp.monto ?? 0;
+                const neto = mp.montoFinal ?? monto;
+                ingresosUSD.total += monto;
+                ingresosUSD.neto += neto;
+                ingresosUSD.totalTransacciones++;
+                break;
+              }
+              case TipoMoneda.ARS: {
+                const monto = mp.monto ?? 0;
+                const neto = comandaHasUSD ? mp.montoFinal ?? 0 : monto;
+                ingresosARS.total += monto;
+                ingresosARS.neto += neto;
+                ingresosARS.totalTransacciones++;
+                break;
+              }
             }
-            return acc;
-          },
-          {
-            total: 0,
-            neto: 0,
-            totalTransacciones: 0,
-          },
-        );
-        const totalIngresosUSD = comanda.metodosPago.reduce(
-          (acc, metodoPago) => {
-            if (metodoPago.moneda === TipoMoneda.USD) {
-              acc.total += metodoPago.monto;
-              acc.neto += metodoPago.montoFinal;
-            }
-            return acc;
-          },
-          {
-            total: 0,
-            neto: 0,
-            totalTransacciones: 0,
-          },
-        );
-
-        acc.totalIngresosARS += totalIngresosARS.total;
-        acc.totalIngresosUSD += totalIngresosUSD.total;
-        acc.montoNetoARSValidado +=
-          comanda.estadoDeComanda === EstadoDeComanda.VALIDADO
-            ? totalIngresosARS.neto
-            : 0;
-        acc.montoNetoUSDValidado +=
-          comanda.estadoDeComanda === EstadoDeComanda.VALIDADO
-            ? totalIngresosUSD.neto
-            : 0;
-        acc.montoNetoARS += totalIngresosARS.neto;
-        acc.montoNetoUSD += totalIngresosUSD.neto;
+          });
+        });
+    
+        /* ---------- Acumulados ---------- */
+        acc.totalIngresosARS += ingresosARS.total;
+        acc.totalIngresosUSD += ingresosUSD.total;
+    
+        acc.montoNetoARS += ingresosARS.neto;
+        acc.montoNetoUSD += ingresosUSD.neto;
+        if (comanda.estadoDeComanda === EstadoDeComanda.VALIDADO && comanda.tipoDeComanda === TipoDeComanda.INGRESO) {
+          acc.montoNetoARSValidado += ingresosARS.neto;
+          acc.montoNetoUSDValidado += ingresosUSD.neto;
+          console.log(ingresosARS.neto, ingresosUSD.neto);
+        }
+    
+        acc.totalTransaccionesARS += ingresosARS.totalTransacciones;
+        acc.totalTransaccionesUSD += ingresosUSD.totalTransacciones;
+    
         return acc;
       },
       {
@@ -836,6 +910,9 @@ export class ComandaService {
         totalTransaccionesUSD: 0,
       },
     );
+
+    console.log(helperComandas);
+    
 
     return {
       totalCompletados: helperComandas.totalCompletados,

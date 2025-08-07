@@ -4,7 +4,6 @@ import { TipoDeComanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity
 import { Type } from 'class-transformer';
 import { CrearItemComandaDto } from './item-comanda.dto';
 import { DescuentoDto } from './descuento.dto';
-import { MetodoPagoDto } from './metodoPago.dto';
 
 export class CrearComandaDto {
   @ApiProperty({
@@ -52,16 +51,6 @@ export class CrearComandaDto {
   })
   @IsUUID()
   creadoPorId: string;
-
-  @ApiPropertyOptional({
-    description: 'IDs de métodos de pago',
-    example: ['123e4567-e89b-12d3-a456-426614174000'],
-  })
-  @IsArray()
-  @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => MetodoPagoDto)
-  metodosPago?: MetodoPagoDto[];
 
   @ApiProperty({
     description: 'Precio en dólares',

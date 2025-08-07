@@ -1,6 +1,6 @@
 // src/modules/metodo-pago/entities/metodo-pago.entity.ts
 import { TipoPago } from 'src/enums/TipoPago.enum';
-import { Comanda } from '../../comanda/entities/Comanda.entity';
+import { ItemComanda } from '../../comanda/entities/ItemComanda.entity';
 import {
     Entity,
     PrimaryGeneratedColumn,
@@ -65,10 +65,10 @@ export class MetodoPago {
     })
     montoFinal: number;
 
-    @ManyToOne(() => Comanda, comanda => comanda.metodosPago, {
+    @ManyToOne(() => ItemComanda, itemComanda => itemComanda.metodosPago, {
         onDelete: 'CASCADE',
     })
-    comanda: Comanda;
+    itemComanda: ItemComanda;
     
 
     @Column({ type: 'enum', enum: TipoMoneda })

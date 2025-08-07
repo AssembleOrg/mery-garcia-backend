@@ -4,6 +4,7 @@ import {
     PrimaryGeneratedColumn,
     Column,
     ManyToOne,
+    OneToMany,
     JoinColumn,
     CreateDateColumn,
     UpdateDateColumn,
@@ -14,6 +15,7 @@ import { TipoItem } from './TipoItem.entity';
 import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
 import { Trabajador } from 'src/personal/entities/Trabajador.entity';
 import { ProductoServicio } from './productoServicio.entity';
+import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 
 @Entity({ name: 'item_comanda' })
 export class ItemComanda {
@@ -74,6 +76,11 @@ export class ItemComanda {
     @ManyToOne(() => Trabajador, trabajador => trabajador.items, { eager: true })
     @JoinColumn({ name: 'trabajador_id' })
     trabajador: Trabajador;     
+
+    @OneToMany(() => MetodoPago, (mp) => mp.itemComanda, {
+        cascade: true,
+    })
+    metodosPago: MetodoPago[];
 
     // @RelationId((item: ItemComanda) => item.trabajador)
     // trabajadorId: string;
