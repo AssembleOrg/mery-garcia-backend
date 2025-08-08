@@ -151,17 +151,17 @@ export class DolarService {
     }
   }
 
-  // @Cron(CronExpression.EVERY_HOUR)
-  // async actualizarDolarAutomaticamente(): Promise<void> {
-  //   this.logger.log('Ejecutando actualización automática del dólar...');
+  @Cron('0 */3 * * 1-6') // Cada 3 horas, de lunes a sábado
+  async actualizarDolarAutomaticamente(): Promise<void> {
+    this.logger.log('Ejecutando actualización automática del dólar cada 3 horas...');
 
-  //   try {
-  //     await this.obtenerDolarActual();
-  //     this.logger.log('Dólar actualizado automáticamente');
-  //   } catch (error) {
-  //     this.logger.error('Error en actualización automática del dólar:', error.message);
-  //   }
-  // }
+    try {
+      await this.obtenerDolarActual();
+      this.logger.log('Dólar actualizado automáticamente');
+    } catch (error) {
+      this.logger.error('Error en actualización automática del dólar:', error.message);
+    }
+  }
 
   async actualizarDolarManualmente(
     dto: ActualizarDolarDto,

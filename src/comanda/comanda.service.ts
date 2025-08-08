@@ -303,8 +303,34 @@ export class ComandaService {
       .take(limit)
       .getManyAndCount();
 
+    let newComandas: Comanda[] = [];
+
+    if(filtros.servicioId && filtros.unidadNegocioId) {
+      for (const comanda of comandas) {
+        const productosServicio = comanda.items.filter(item => item.productoServicio.unidadNegocio.id === filtros.unidadNegocioId && item.productoServicio.id === filtros.servicioId);
+        //!Realmente no se si es necesario hacer esto, porque ya se filtra por servicio y unidadNegocio en el queryBuilder
+        //!Pero sirve para evitar errores en el frontend
+        if(productosServicio.length > 0) {
+          newComandas.push(comanda);
+        } else {
+          throw new NotFoundException(`No se encontró el servicio con las condiciones especificadas`);
+        }
+      }
+    }
+
+    if(filtros.unidadNegocioId && !filtros.servicioId) {
+      for (const comanda of comandas) {
+        const productosServicio = comanda.items.filter(item => item.productoServicio.unidadNegocio.id === filtros.unidadNegocioId);
+        if(productosServicio.length > 0) {
+          newComandas.push(comanda);
+        } else {
+          throw new NotFoundException(`No se encontró el servicio con las condiciones especificadas`);
+        }
+      }
+    }
+
     return {
-      data: comandas,
+      data: newComandas.length > 0 ? newComandas : comandas,
       meta: {
         page,
         limit,
@@ -967,15 +993,34 @@ export class ComandaService {
       });
     }
 
-    if (filtros.clienteId) {
-      queryBuilder.andWhere('cliente.id = :clienteId', {
-        clienteId: filtros.clienteId,
+    if (filtros.trabajadorNombre) {
+      queryBuilder.andWhere('LOWER(trabajador.nombre) ILIKE LOWER(:trabajadorNombre)', {
+        trabajadorNombre: `%${filtros.trabajadorNombre.trim()}%`
       });
     }
 
-    if (filtros.creadoPorId) {
-      queryBuilder.andWhere('creadoPor.id = :creadoPorId', {
-        creadoPorId: filtros.creadoPorId,
+    
+    if (filtros.clienteNombre) {
+      queryBuilder.andWhere('LOWER(cliente.nombre) ILIKE LOWER(:clienteNombre)', {
+        clienteNombre: `%${filtros.clienteNombre}%`,
+      });
+    }
+
+    if (filtros.creadoPorNombre) {
+      queryBuilder.andWhere('LOWER(creadoPor.nombre) ILIKE LOWER(:creadoPorNombre)', {
+        creadoPorNombre: `%${filtros.creadoPorNombre.trim()}%`
+      });
+    }
+
+    if (filtros.unidadNegocioId) {
+      queryBuilder.andWhere('unidadNegocio.id = :unidadNegocioId', {
+        unidadNegocioId: filtros.unidadNegocioId,
+      });
+    }
+
+    if (filtros.servicioId) {
+      queryBuilder.andWhere('servicio.id = :servicioId', {
+        servicioId: filtros.servicioId,
       });
     }
 

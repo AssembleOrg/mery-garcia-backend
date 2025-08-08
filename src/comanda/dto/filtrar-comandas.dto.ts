@@ -62,20 +62,44 @@ export class FiltrarComandasDto {
   estadoDeComanda?: EstadoDeComanda;
 
   @ApiPropertyOptional({
-    description: 'ID del cliente',
+    description: 'ID del negocio',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
   @IsUUID()
-  clienteId?: string;
+  unidadNegocioId?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID del negocio',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsUUID()
+  servicioId?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID del cliente',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsOptional()
+  @IsString()
+  clienteNombre?: string;
 
   @ApiPropertyOptional({
     description: 'ID del personal que creó la comanda',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
   @IsOptional()
-  @IsUUID()
-  creadoPorId?: string;
+  @IsString()
+  creadoPorNombre?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nombre del trabajador',
+    example: 'Juan Perez',
+  })
+  @IsOptional()
+  @IsString()
+  trabajadorNombre?: string;
 
   @ApiPropertyOptional({
     description: 'Fecha desde',
