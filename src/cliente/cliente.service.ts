@@ -264,35 +264,69 @@ export class ClienteService {
     Object.assign(cliente, camposCliente);
     const clienteActualizado = await this.clienteRepository.save(cliente);
 
-    // Crear prepagos guardados si se proporcionan señas
-    if (señaUsd || señaArs) {
-      const prepagosGuardados: PrepagoGuardado[] = [];
+    // Obtener señas existentes del cliente
+    const señasExistentes = await this.prepagoGuardadoRepository.find({
+      where: {
+        cliente: { id: clienteActualizado.id },
+        estado: EstadoPrepago.ACTIVA,
+      },
+    });
 
-      if (señaUsd) {
-        console.log('actualizarClienteDto.señaUsd', señaUsd);
+    // Procesar señas USD
+    if (señaUsd !== undefined) {
+      const señaUsdExistente = señasExistentes.find(
+        seña => seña.moneda === TipoMoneda.USD
+      );
+
+      if (señaUsdExistente) {
+        if (señaUsd > 0) {
+          // Actualizar seña existente
+          señaUsdExistente.monto = señaUsd;
+          señaUsdExistente.observaciones = 'Seña USD actualizada';
+          await this.prepagoGuardadoRepository.save(señaUsdExistente);
+        } else {
+          // Eliminar seña si se establece en 0
+          await this.prepagoGuardadoRepository.softRemove(señaUsdExistente);
+        }
+      } else if (señaUsd > 0) {
+        // Crear nueva seña solo si no existe y el monto es mayor a 0
         const prepagoGuardado = this.prepagoGuardadoRepository.create({
           monto: señaUsd,
           moneda: TipoMoneda.USD,
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteActualizado,
-          observaciones: 'Seña USD actualizada',
+          observaciones: 'Seña USD creada',
         });
-        prepagosGuardados.push(prepagoGuardado);
+        await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
+    }
 
-      if (señaArs) {
+    // Procesar señas ARS
+    if (señaArs !== undefined) {
+      const señaArsExistente = señasExistentes.find(
+        seña => seña.moneda === TipoMoneda.ARS
+      );
+
+      if (señaArsExistente) {
+        if (señaArs > 0) {
+          // Actualizar seña existente
+          señaArsExistente.monto = señaArs;
+          señaArsExistente.observaciones = 'Seña ARS actualizada';
+          await this.prepagoGuardadoRepository.save(señaArsExistente);
+        } else {
+          // Eliminar seña si se establece en 0
+          await this.prepagoGuardadoRepository.softRemove(señaArsExistente);
+        }
+      } else if (señaArs > 0) {
+        // Crear nueva seña solo si no existe y el monto es mayor a 0
         const prepagoGuardado = this.prepagoGuardadoRepository.create({
           monto: señaArs,
           moneda: TipoMoneda.ARS,
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteActualizado,
-          observaciones: 'Seña ARS actualizada',
+          observaciones: 'Seña ARS creada',
         });
-        prepagosGuardados.push(prepagoGuardado);
-      }
-
-      if (prepagosGuardados.length > 0) {
-        await this.prepagoGuardadoRepository.save(prepagosGuardados);
+        await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
     }
 
