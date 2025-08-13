@@ -13,6 +13,7 @@ import { Cliente } from '../../cliente/entities/Cliente.entity';
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 
 
@@ -47,4 +48,8 @@ export class PrepagoGuardado {
   })
   @JoinColumn({ name: 'cliente_id' })
   cliente: Cliente;
+
+
+  @Column({ type: 'enum', enum: TipoPago })
+  tipoPago: TipoPago;
 }

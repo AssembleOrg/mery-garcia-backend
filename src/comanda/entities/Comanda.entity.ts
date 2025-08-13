@@ -130,6 +130,13 @@ export class Comanda {
 
   @Column({ type: 'boolean', default: false })
   usuarioConsumePrepago: boolean;
+  
+
+  @Column({ type: 'boolean', default: false })
+  usuarioConsumePrepagoARS: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  usuarioConsumePrepagoUSD: boolean;
 
   @Column({
     type: 'numeric',

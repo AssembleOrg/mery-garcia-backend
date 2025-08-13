@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsEmail, Length, IsUUID, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsEmail, Length, IsUUID, IsNumber, IsEnum } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 export class CrearClienteDto {
     @ApiProperty({
@@ -31,6 +32,13 @@ export class CrearClienteDto {
     @IsString()
     @Length(0, 20)
     dni?: string;
+
+    @ApiPropertyOptional({
+        description: 'Tipo de pago del cliente',
+        example: TipoPago.EFECTIVO,
+    })
+    @IsEnum(TipoPago)
+    tipoPago?: TipoPago;
 
     @ApiPropertyOptional({
         description: 'Email del cliente',
@@ -66,4 +74,21 @@ export class CrearClienteDto {
     @IsOptional()
     @IsNumber()
     señaArs?: number;
+
+    @ApiPropertyOptional({
+        description: 'Tipo de pago ARS del cliente',
+        example: TipoPago.EFECTIVO,
+    })
+    @IsOptional()
+    @IsEnum(TipoPago)
+    tipoPagoARS?: TipoPago;
+
+    @ApiPropertyOptional({
+        description: 'Tipo de pago USD del cliente',
+        example: TipoPago.EFECTIVO,
+    })
+    @IsOptional()
+    @IsEnum(TipoPago)
+    tipoPagoUSD?: TipoPago;
+
 } 

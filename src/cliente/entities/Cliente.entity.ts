@@ -13,6 +13,7 @@ import { PrepagoGuardado } from '../../personal/entities/PrepagoGuardado.entity'
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 import { TipoMoneda } from '../../enums/TipoMoneda.enum';
 import { EstadoPrepago } from '../../enums/EstadoPrepago.enum';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 @Entity({ name: 'clientes' })
 export class Cliente {
@@ -80,5 +81,19 @@ export class Cliente {
             .reduce((sum, pg) => sum + Number(pg.monto), 0);
 
         return { ars, usd };
+    }
+
+    get tipoPagoARS(): TipoPago {
+        if (!this.prepagosGuardados) {
+            return TipoPago.EFECTIVO;
+        }
+        return this.prepagosGuardados.find(pg => pg.moneda === TipoMoneda.ARS && pg.estado === EstadoPrepago.ACTIVA)?.tipoPago ?? TipoPago.EFECTIVO;
+    }
+
+    get tipoPagoUSD(): TipoPago {
+        if (!this.prepagosGuardados) {
+            return TipoPago.EFECTIVO;
+        }
+        return this.prepagosGuardados.find(pg => pg.moneda === TipoMoneda.USD && pg.estado === EstadoPrepago.ACTIVA)?.tipoPago ?? TipoPago.EFECTIVO;
     }
 }

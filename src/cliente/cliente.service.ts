@@ -12,6 +12,7 @@ import { FiltrarClientesDto } from './dto/filtrar-clientes.dto';
 import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 @Injectable()
 export class ClienteService {
@@ -23,7 +24,7 @@ export class ClienteService {
   ) {}
 
   async crear(crearClienteDto: CrearClienteDto): Promise<Cliente> {
-    const { señaUsd, señaArs, ...rest } = crearClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, ...rest } = crearClienteDto;
     // Verificar si ya existe un cliente con el mismo CUIT
     if (rest.cuit) {
       const clienteExistente = await this.clienteRepository.findOne({
@@ -50,6 +51,7 @@ export class ClienteService {
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteGuardado,
           observaciones: 'Seña USD creada automáticamente',
+          tipoPago: tipoPagoUSD ?? TipoPago.EFECTIVO,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
@@ -61,13 +63,14 @@ export class ClienteService {
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteGuardado,
           observaciones: 'Seña ARS creada automáticamente',
+          tipoPago: tipoPagoARS ?? TipoPago.EFECTIVO,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
 
       if (prepagosGuardados.length > 0) {
         await this.prepagoGuardadoRepository.save(prepagosGuardados);
-      }
+      } 
     }
 
     // Retornar el cliente con los prepagos guardados
@@ -100,9 +103,14 @@ export class ClienteService {
         señasDisponibles.usd = usd;
       }
 
+      const tipoPagoARS = cliente.tipoPagoARS;
+      const tipoPagoUSD = cliente.tipoPagoUSD;
+
       return {
         ...cliente,
         señasDisponibles,
+        tipoPagoARS,
+        tipoPagoUSD,
       };
     });
   }
@@ -229,9 +237,14 @@ export class ClienteService {
       señasDisponibles.usd = usd;
     }
 
+    const tipoPagoARS = cliente.tipoPagoARS;
+    const tipoPagoUSD = cliente.tipoPagoUSD;
+
     return {
       ...cliente,
       señasDisponibles,
+      tipoPagoARS,
+      tipoPagoUSD,
     };
   }
 
@@ -258,7 +271,7 @@ export class ClienteService {
     console.table(actualizarClienteDto);
     
     // Extraer señas del DTO
-    const { señaUsd, señaArs, ...camposCliente } = actualizarClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, ...camposCliente } = actualizarClienteDto;
     
     // Actualizar campos del cliente
     Object.assign(cliente, camposCliente);
@@ -283,6 +296,7 @@ export class ClienteService {
           // Actualizar seña existente
           señaUsdExistente.monto = señaUsd;
           señaUsdExistente.observaciones = 'Seña USD actualizada';
+          señaUsdExistente.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
           await this.prepagoGuardadoRepository.save(señaUsdExistente);
         } else {
           // Eliminar seña si se establece en 0
@@ -296,6 +310,7 @@ export class ClienteService {
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteActualizado,
           observaciones: 'Seña USD creada',
+          tipoPago: tipoPagoUSD ?? TipoPago.EFECTIVO,
         });
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
@@ -312,6 +327,7 @@ export class ClienteService {
           // Actualizar seña existente
           señaArsExistente.monto = señaArs;
           señaArsExistente.observaciones = 'Seña ARS actualizada';
+          señaArsExistente.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
           await this.prepagoGuardadoRepository.save(señaArsExistente);
         } else {
           // Eliminar seña si se establece en 0
@@ -325,6 +341,7 @@ export class ClienteService {
           estado: EstadoPrepago.ACTIVA,
           cliente: clienteActualizado,
           observaciones: 'Seña ARS creada',
+          tipoPago: tipoPagoARS ?? TipoPago.EFECTIVO, 
         });
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }

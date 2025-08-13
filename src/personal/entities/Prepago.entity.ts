@@ -11,6 +11,7 @@ import {
     DeleteDateColumn,
 } from 'typeorm';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 
 
@@ -40,5 +41,6 @@ export class Prepago {
     @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
     deletedAt?: Date;
 
-
+    @Column({ type: 'enum', enum: TipoPago })
+    tipoPago: TipoPago;
 }

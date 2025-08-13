@@ -21,7 +21,7 @@ export class MetodoPago {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ type: 'enum', enum: TipoPago })
+    @Column({ type: 'enum', enum: TipoPago })  
     tipo: TipoPago;
 
     @Column({

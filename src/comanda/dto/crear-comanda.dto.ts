@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsUUID, IsEnum, IsArray, Min, IsBoolean, ValidateNested } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsUUID, IsEnum, IsArray, Min, IsBoolean, ValidateNested, IsDate } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { TipoDeComanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity';
 import { Type } from 'class-transformer';
@@ -28,6 +28,14 @@ export class CrearComandaDto {
   })
   @IsEnum(TipoDeComanda)
   tipoDeComanda: TipoDeComanda;
+
+  @ApiProperty({
+    description: 'Fecha de creación de la comanda',
+    example: '2024-01-01',
+  })
+  @IsDate()
+  @Type(() => Date)
+  createdAt: Date;
 
   @ApiProperty({
     description: 'Estado de la comanda',
@@ -88,12 +96,20 @@ export class CrearComandaDto {
   observaciones?: string;
 
   @ApiProperty({
-    description: 'Usuario consume prepago',
+    description: 'Usuario consume prepago ARS',
     example: true,
   })
   @IsBoolean()
   @IsOptional()
-  usuarioConsumePrepago: boolean;
+  usuarioConsumePrepagoARS: boolean;
+
+  @ApiProperty({
+    description: 'Usuario consume prepago USD',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  usuarioConsumePrepagoUSD: boolean;
 
   @ApiProperty({
     description: 'Descuentos aplicados',
