@@ -758,17 +758,18 @@ export class ComandaService {
     }
   }
 
-  async getLastComanda(): Promise<Comanda | null> {
-    return await this.comandaRepository.findOne({
-      where: {
-        caja: Caja.CAJA_1,
-        tipoDeComanda: TipoDeComanda.INGRESO,
-      },
-      order: { createdAt: 'DESC' },
-      select: {
-        numero: true,
-      },
-    });
+  async getLastComanda(): Promise<{ numero: string } | null> {
+    const row = await this.comandaRepository
+      .createQueryBuilder('c')
+      .select('c.numero', 'numero')
+      .where('c.caja = :caja', { caja: Caja.CAJA_1 })
+      .andWhere('c.tipoDeComanda = :tipo', { tipo: TipoDeComanda.INGRESO })
+      .orderBy("split_part(c.numero, '-', 1)::int", 'DESC')  // serie
+      .addOrderBy("split_part(c.numero, '-', 2)::int", 'DESC') // correlativo
+      .limit(1)
+      .getRawOne<{ numero: string }>();
+  
+    return row ?? null;
   }
 
   async netoCajaChica(): Promise<{

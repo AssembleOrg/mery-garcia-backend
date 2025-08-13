@@ -34,13 +34,6 @@ export class CrearClienteDto {
     dni?: string;
 
     @ApiPropertyOptional({
-        description: 'Tipo de pago del cliente',
-        example: TipoPago.EFECTIVO,
-    })
-    @IsEnum(TipoPago)
-    tipoPago?: TipoPago;
-
-    @ApiPropertyOptional({
         description: 'Email del cliente',
         example: 'juan.perez@email.com',
     })

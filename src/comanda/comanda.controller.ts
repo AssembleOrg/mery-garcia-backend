@@ -212,7 +212,7 @@ export class ComandaController {
     summary: 'Obtener la última comanda',
     description: 'Obtiene la última comanda creada',
   })
-  async obtenerUltimaComanda(): Promise<Comanda | null> {
+  async obtenerUltimaComanda(): Promise<{ numero: string } | null> {
     return await this.comandaService.getLastComanda();
   }
 
