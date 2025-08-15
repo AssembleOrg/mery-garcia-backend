@@ -23,6 +23,7 @@ import { NumericTransformer } from 'src/common/transformers/numeric.transformer'
 import { Movimiento } from './movimiento.entity';
 import { ItemComanda } from './ItemComanda.entity';
 import { Egreso } from './egreso.entity';
+import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 
 export enum TipoDeComanda {
   INGRESO = 'INGRESO',
@@ -65,7 +66,8 @@ export class Comanda {
   createdAt: Date;
 
   @OneToMany(() => Egreso, (e) => e.comanda, {
-    cascade: true,
+    cascade: ['insert', 'update', 'remove'],
+    onDelete: 'CASCADE',
   })
   egresos?: Egreso[];
 
@@ -106,13 +108,30 @@ export class Comanda {
   @RelationId((comanda: Comanda) => comanda.movimiento)
   movimientoId: string;
 
+  // Relaciones con prepagos específicos (NO CASCADE - no queremos borrar prepagos)
+  @ManyToOne(() => PrepagoGuardado, { 
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'prepagoARSID' })
+  prepagoARS?: PrepagoGuardado;
+
+  @ManyToOne(() => PrepagoGuardado, { 
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'prepagoUSDID' })
+  prepagoUSD?: PrepagoGuardado;
+
   @OneToMany(() => Descuento, (d) => d.comanda, {
-    cascade: true,
+    cascade: ['insert', 'update', 'remove'],
+    onDelete: 'CASCADE',
   })
   descuentosAplicados: Descuento[];
 
   @OneToMany(() => ItemComanda, (ic) => ic.comanda, {
-    cascade: true,
+    cascade: ['insert', 'update', 'remove'],
+    onDelete: 'CASCADE',
   })
   items: ItemComanda[];
   /* ---------- Data ---------- */
@@ -137,6 +156,12 @@ export class Comanda {
 
   @Column({ type: 'boolean', default: false })
   usuarioConsumePrepagoUSD: boolean;
+
+  @Column({ type: 'uuid', nullable: true })
+  prepagoARSID?: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  prepagoUSDID?: string;
 
   @Column({
     type: 'numeric',

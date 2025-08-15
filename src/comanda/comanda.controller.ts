@@ -284,6 +284,22 @@ export class ComandaController {
 
   }
 
+  //hard D
+  @Delete(':id/hard')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Eliminar comanda permanentemente',
+    description: 'Elimina una comanda de forma permanente junto con todos sus elementos relacionados (items, métodos de pago, descuentos, egresos). También reactiva los prepagos que estaban siendo utilizados por esta comanda.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la comanda', example: '123e4567-e89b-12d3-a456-426614174000' })
+  @ApiResponse({ status: 204, description: 'Comanda eliminada permanentemente' })
+  @ApiResponse({ status: 404, description: 'Comanda no encontrada' })
+  @LogAction({ action: 'DELETE', entityType: 'Comanda', description: 'Eliminación permanente de comanda' })
+  async eliminarHard(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    await this.comandaService.eliminarHard(id);
+  }
+
   @Post(':id/restaurar')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @ApiOperation({

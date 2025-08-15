@@ -253,7 +253,7 @@ export class ClienteService {
     actualizarClienteDto: ActualizarClienteDto,
   ): Promise<Cliente> {
     const cliente = await this.obtenerPorId(id);
-
+ 
     // Verificar si el CUIT ya existe en otro cliente
     if (
       actualizarClienteDto.cuit &&

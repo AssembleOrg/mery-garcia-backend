@@ -17,7 +17,9 @@ export class Egreso {
   @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })
   totalPesos: number;   
 
-  @ManyToOne(() => Comanda, (c) => c.egresos)
+  @ManyToOne(() => Comanda, (c) => c.egresos, {
+    onDelete: 'CASCADE',
+  })
   comanda: Comanda;
   
   @Column({ type: 'numeric', precision: 12, scale: 4, default: 0, transformer: NumericTransformer })

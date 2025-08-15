@@ -30,6 +30,22 @@ export class CrearComandaDto {
   tipoDeComanda: TipoDeComanda;
 
   @ApiProperty({
+    description: 'ID del prepago ARS',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID()
+  @IsOptional()
+  prepagoARSID?: string;
+
+  @ApiProperty({
+    description: 'ID del prepago USD',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @IsUUID()
+  @IsOptional()
+  prepagoUSDID?: string;
+
+  @ApiProperty({
     description: 'Fecha de creación de la comanda',
     example: '2024-01-01',
   })
