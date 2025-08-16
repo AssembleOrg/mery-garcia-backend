@@ -141,7 +141,7 @@ export class AuditoriaService {
       .take(limit)
       .getManyAndCount();
 
-    console.log('Resultados:', { auditorias: auditorias.length, total });
+    // console.log('Resultados:', { auditorias: auditorias.length, total });
 
     return {
       data: auditorias,

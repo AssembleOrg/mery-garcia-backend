@@ -55,7 +55,7 @@ export class LoggingInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(async (response) => {
         try {
-          console.log(`Logging ${action} action for ${entityType} by user ${userId}`);
+          // console.log(`Logging ${action} action for ${entityType} by user ${userId}`);
           
           // Map action to TipoAccion
           const tipoAccion = this.mapActionToTipoAccion(action, entityType);

@@ -293,9 +293,9 @@ export class ClienteService {
 
       if (señaUsdExistente) {
         if (señaUsd > 0) {
-          // Actualizar seña existente
+          // Reemplazar el valor de la seña existente
           señaUsdExistente.monto = señaUsd;
-          señaUsdExistente.observaciones = 'Seña USD actualizada';
+          señaUsdExistente.observaciones = `Seña USD actualizada a ${señaUsd}`;
           señaUsdExistente.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
           await this.prepagoGuardadoRepository.save(señaUsdExistente);
         } else {
@@ -304,14 +304,13 @@ export class ClienteService {
         }
       } else if (señaUsd > 0) {
         // Crear nueva seña solo si no existe y el monto es mayor a 0
-        const prepagoGuardado = this.prepagoGuardadoRepository.create({
-          monto: señaUsd,
-          moneda: TipoMoneda.USD,
-          estado: EstadoPrepago.ACTIVA,
-          cliente: clienteActualizado,
-          observaciones: 'Seña USD creada',
-          tipoPago: tipoPagoUSD ?? TipoPago.EFECTIVO,
-        });
+        const prepagoGuardado = new PrepagoGuardado();
+        prepagoGuardado.monto = señaUsd;
+        prepagoGuardado.moneda = TipoMoneda.USD;
+        prepagoGuardado.estado = EstadoPrepago.ACTIVA;
+        prepagoGuardado.cliente = clienteActualizado;
+        prepagoGuardado.observaciones = 'Seña USD creada';
+        prepagoGuardado.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
     }
@@ -324,9 +323,9 @@ export class ClienteService {
 
       if (señaArsExistente) {
         if (señaArs > 0) {
-          // Actualizar seña existente
+          // Reemplazar el valor de la seña existente
           señaArsExistente.monto = señaArs;
-          señaArsExistente.observaciones = 'Seña ARS actualizada';
+          señaArsExistente.observaciones = `Seña ARS actualizada a ${señaArs}`;
           señaArsExistente.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
           await this.prepagoGuardadoRepository.save(señaArsExistente);
         } else {
@@ -335,14 +334,13 @@ export class ClienteService {
         }
       } else if (señaArs > 0) {
         // Crear nueva seña solo si no existe y el monto es mayor a 0
-        const prepagoGuardado = this.prepagoGuardadoRepository.create({
-          monto: señaArs,
-          moneda: TipoMoneda.ARS,
-          estado: EstadoPrepago.ACTIVA,
-          cliente: clienteActualizado,
-          observaciones: 'Seña ARS creada',
-          tipoPago: tipoPagoARS ?? TipoPago.EFECTIVO, 
-        });
+        const prepagoGuardado = new PrepagoGuardado();
+        prepagoGuardado.monto = señaArs;
+        prepagoGuardado.moneda = TipoMoneda.ARS;
+        prepagoGuardado.estado = EstadoPrepago.ACTIVA;
+        prepagoGuardado.cliente = clienteActualizado;
+        prepagoGuardado.observaciones = 'Seña ARS creada';
+        prepagoGuardado.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
     }
@@ -393,5 +391,25 @@ export class ClienteService {
       clientesEliminados,
       clientesConSeñas,
     };
+  }
+
+  async obtenerTotalSeniasActivas(): Promise<{ ars: number; usd: number }> {
+    const rows = await this.prepagoGuardadoRepository
+      .createQueryBuilder('pg')
+      .select('pg.moneda', 'moneda')
+      .addSelect('COALESCE(SUM(pg.monto), 0)', 'total')
+      .where('pg.estado = :estado', { estado: EstadoPrepago.ACTIVA })
+      .groupBy('pg.moneda')
+      .getRawMany<{ moneda: TipoMoneda; total: string }>();
+
+    let ars = 0;
+    let usd = 0;
+
+    for (const r of rows) {
+      if (r.moneda === TipoMoneda.ARS) ars = Number(r.total ?? 0);
+      if (r.moneda === TipoMoneda.USD) usd = Number(r.total ?? 0);
+    }
+
+    return { ars, usd };
   }
 }

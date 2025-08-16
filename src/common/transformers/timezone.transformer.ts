@@ -14,7 +14,6 @@ export const TimezoneTransformer = {
       'America/Argentina/Buenos_Aires',
       "yyyy-MM-dd'T'HH:mm:ssXXX"
     );
-    console.log('horaActualART', horaActualART);
     // Convierte el Date (UTC) al huso de Buenos Aires
     return new Date(horaActualART);
   },

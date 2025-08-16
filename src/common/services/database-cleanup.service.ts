@@ -22,12 +22,11 @@ export class DatabaseCleanupService {
         'sessions', // Si tienes tabla de sesiones
         'refresh_tokens', // Si tienes tabla de refresh tokens
         'configuracion_sistema', // Configuración del sistema
-        // 'cotizacion_dolar', // Cotización del dólar
-        // 'personal',
-        // 'clientes',
-        // 'productos_servicios',
-        // 'unidades_negocio',
-        // 'trabajadores',
+        'personal',
+        'clientes',
+        'productos_servicios',
+        'unidades_negocio',
+        'trabajadores',
       ];
 
       // Obtener todas las tablas de la base de datos

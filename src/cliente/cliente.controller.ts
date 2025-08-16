@@ -352,4 +352,22 @@ export class ClienteController {
     async obtenerEstadisticas() {
         return await this.clienteService.obtenerEstadisticas();
     }
+
+    @Get('estadisticas/senas-activas')
+    @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+    @ApiOperation({
+        summary: 'Totales de señas activas',
+        description: 'Suma de todas las señas activas agrupadas por moneda',
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Totales de señas activas',
+        schema: {
+            type: 'object',
+            properties: { ars: { type: 'number' }, usd: { type: 'number' } },
+        },
+    })
+    async obtenerTotalSeniasActivas(): Promise<{ ars: number; usd: number }> {
+        return this.clienteService.obtenerTotalSeniasActivas();
+    }
 }

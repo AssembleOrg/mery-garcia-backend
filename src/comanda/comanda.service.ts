@@ -364,6 +364,7 @@ export class ComandaService {
     const queryBuilder = this.comandaRepository
       .createQueryBuilder('comanda')
       .leftJoinAndSelect('comanda.cliente', 'cliente')
+      .leftJoinAndSelect('cliente.prepagosGuardados', 'prepagosGuardados')
       .leftJoinAndSelect('comanda.creadoPor', 'creadoPor')
       .leftJoinAndSelect('comanda.items', 'items')
       .leftJoinAndSelect('items.metodosPago', 'metodosPago')
@@ -531,6 +532,7 @@ export class ComandaService {
         where: { id },
         relations: [
           'cliente',
+          'cliente.prepagosGuardados',
           'creadoPor',
           'items',
           'items.metodosPago',
@@ -578,6 +580,11 @@ export class ComandaService {
           actualizarComandaDto.usuarioConsumePrepagoUSD;
       }
 
+      // Actualizar createdAt si se proporciona
+      if (actualizarComandaDto.createdAt !== undefined) {
+        comanda.createdAt = actualizarComandaDto.createdAt;
+      }
+
       // 2. Actualizar cliente solo si se proporciona
       if (actualizarComandaDto.clienteId !== undefined) {
         const clienteAnterior = comanda.cliente;
@@ -618,29 +625,7 @@ export class ComandaService {
             comanda.prepagoUSDID = undefined;
           }
 
-          // Mismo cliente, solo actualizar prepagos por si desactivamos el prepago
-          if (!actualizarComandaDto.prepagoARSID || !actualizarComandaDto.prepagoUSDID) {
-            if(!actualizarComandaDto.prepagoARSID && comanda.prepagoARSID) {
-              comanda.prepagoARSID = undefined;
-              const prepagoAnteriorARS = await queryRunner.manager.findOne(PrepagoGuardado, {
-                where: { id: comanda.prepagoARSID },
-              });
-              if (prepagoAnteriorARS && prepagoAnteriorARS.estado === EstadoPrepago.UTILIZADA) {
-                prepagoAnteriorARS.estado = EstadoPrepago.ACTIVA;
-                await queryRunner.manager.save(PrepagoGuardado, prepagoAnteriorARS);
-              }
-            }
-            if(!actualizarComandaDto.prepagoUSDID && comanda.prepagoUSDID) {
-              comanda.prepagoUSDID = undefined;
-              const prepagoAnteriorUSD = await queryRunner.manager.findOne(PrepagoGuardado, {
-                where: { id: comanda.prepagoUSDID },
-              });
-              if (prepagoAnteriorUSD && prepagoAnteriorUSD.estado === EstadoPrepago.UTILIZADA) {
-                prepagoAnteriorUSD.estado = EstadoPrepago.ACTIVA;
-                await queryRunner.manager.save(PrepagoGuardado, prepagoAnteriorUSD);
-              }
-            }
-          }
+          // Mismo cliente - no hacer nada con prepagos aquí, se maneja después
           
           comanda.cliente = cliente;
         } else {
@@ -673,69 +658,168 @@ export class ComandaService {
         }
       }
 
-      // 2.1. Actualizar prepagos si se proporcionan nuevos IDs
-      if (actualizarComandaDto.prepagoARSID !== undefined) {
-        // Si había un prepago anterior diferente, reactivarlo
-        if (comanda.prepagoARSID && comanda.prepagoARSID !== actualizarComandaDto.prepagoARSID) {
-          const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
-            where: { id: comanda.prepagoARSID },
+      // LÓGICA UNIFICADA DE MANEJO DE PREPAGOS
+      // 1. Si se cancela el consumo de prepago ARS
+      if (actualizarComandaDto.usuarioConsumePrepagoARS === false) {
+        const prevARSId = comanda.prepagoARSID;
+        if (prevARSId) {
+          const prepagoARS = await queryRunner.manager.findOne(PrepagoGuardado, {
+            where: { id: prevARSId },
           });
-          if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
-            prepagoAnterior.estado = EstadoPrepago.ACTIVA;
-            await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+          if (prepagoARS && prepagoARS.estado === EstadoPrepago.UTILIZADA) {
+            prepagoARS.estado = EstadoPrepago.ACTIVA;
+            await queryRunner.manager.save(PrepagoGuardado, prepagoARS);
           }
         }
-        
-        // Actualizar con el nuevo prepago
-        comanda.prepagoARSID = actualizarComandaDto.prepagoARSID;
-        
-        // Marcar el nuevo prepago como utilizado si existe
-        if (actualizarComandaDto.prepagoARSID && comanda.cliente) {
-          const nuevoPrepago = await queryRunner.manager.findOne(PrepagoGuardado, {
-            where: {
-              id: actualizarComandaDto.prepagoARSID,
-              cliente: { id: comanda.cliente.id },
-              estado: EstadoPrepago.ACTIVA,
-              moneda: TipoMoneda.ARS,
-            },
-          });
-          if (nuevoPrepago) {
-            nuevoPrepago.estado = EstadoPrepago.UTILIZADA;
-            await queryRunner.manager.save(PrepagoGuardado, nuevoPrepago);
-          }
-        }
+        // Limpiar siempre
+        comanda.prepagoARSID = undefined;
+        comanda.prepagoARS = undefined;
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({ prepagoARSID: null })
+          .where('id = :id', { id: comanda.id })
+          .execute();
+        this.logger.debug(`prepagoARSID NULL for comanda ${comanda.id}`);
       }
+
+      // 2. Si se cancela el consumo de prepago USD
+      if (actualizarComandaDto.usuarioConsumePrepagoUSD === false) {
+        const prevUSDId = comanda.prepagoUSDID;
+        if (prevUSDId) {
+          const prepagoUSD = await queryRunner.manager.findOne(PrepagoGuardado, {
+            where: { id: prevUSDId },
+          });
+          if (prepagoUSD && prepagoUSD.estado === EstadoPrepago.UTILIZADA) {
+            prepagoUSD.estado = EstadoPrepago.ACTIVA;
+            await queryRunner.manager.save(PrepagoGuardado, prepagoUSD);
+          }
+        }
+        // Limpiar siempre
+        comanda.prepagoUSDID = undefined;
+        comanda.prepagoUSD = undefined;
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({ prepagoUSDID: null })
+          .where('id = :id', { id: comanda.id })
+          .execute();
+        this.logger.debug(`prepagoUSDID NULL for comanda ${comanda.id}`);
+      }
+
+      // 2.1. Actualizar prepagos si se proporcionan nuevos IDs
+      // Solo procesar prepagoARSID si se proporciona EXPLÍCITAMENTE en el DTO
+      if (actualizarComandaDto.prepagoARSID !== undefined) {
+        console.log('🔍 Procesando prepagoARSID del DTO:', actualizarComandaDto.prepagoARSID);
+        if (actualizarComandaDto.prepagoARSID === null || actualizarComandaDto.prepagoARSID === '') {
+          // Si se establece explícitamente como null o vacío, reactivar el prepago anterior
+          if (comanda.prepagoARSID) {
+            const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: { id: comanda.prepagoARSID },
+            });
+            if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
+              prepagoAnterior.estado = EstadoPrepago.ACTIVA;
+              await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+            }
+          }
+          comanda.prepagoARSID = undefined;
+          console.log('✅ Prepago ARS ID establecido como undefined por DTO null/vacío');
+        } else if (actualizarComandaDto.prepagoARSID) {
+          // Solo si se proporciona un ID válido (no undefined, null, o vacío)
+          console.log('🔄 Asignando nuevo prepago ARS:', actualizarComandaDto.prepagoARSID);
+          // Si había un prepago anterior diferente, reactivarlo
+          if (comanda.prepagoARSID && comanda.prepagoARSID !== actualizarComandaDto.prepagoARSID) {
+            const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: { id: comanda.prepagoARSID },
+            });
+            if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
+              prepagoAnterior.estado = EstadoPrepago.ACTIVA;
+              await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+            }
+          }
+          
+          // Actualizar con el nuevo prepago
+          comanda.prepagoARSID = actualizarComandaDto.prepagoARSID;
+          console.log('✅ Prepago ARS ID asignado:', comanda.prepagoARSID);
+          
+          // Marcar el nuevo prepago como utilizado si existe
+          if (comanda.cliente) {
+            const nuevoPrepago = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: {
+                id: actualizarComandaDto.prepagoARSID,
+                cliente: { id: comanda.cliente.id },
+                estado: EstadoPrepago.ACTIVA,
+                moneda: TipoMoneda.ARS,
+              },
+            });
+            if (nuevoPrepago) {
+              nuevoPrepago.estado = EstadoPrepago.UTILIZADA;
+              await queryRunner.manager.save(PrepagoGuardado, nuevoPrepago);
+            }
+          }
+        }
+        // Si actualizarComandaDto.prepagoARSID es undefined, NO hacer nada
+        // (esto permite que la lógica de usuarioConsumePrepagoARS funcione correctamente)
+      } else {
+        console.log('ℹ️ No se procesa prepagoARSID - DTO es undefined');
+      }
+
+  
       
+      // Solo procesar prepagoUSDID si se proporciona EXPLÍCITAMENTE en el DTO
       if (actualizarComandaDto.prepagoUSDID !== undefined) {
-        // Si había un prepago anterior diferente, reactivarlo
-        if (comanda.prepagoUSDID && comanda.prepagoUSDID !== actualizarComandaDto.prepagoUSDID) {
-          const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
-            where: { id: comanda.prepagoUSDID },
-          });
-          if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
-            prepagoAnterior.estado = EstadoPrepago.ACTIVA;
-            await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+        console.log('🔍 Procesando prepagoUSDID del DTO:', actualizarComandaDto.prepagoUSDID);
+        if (actualizarComandaDto.prepagoUSDID === null || actualizarComandaDto.prepagoUSDID === '') {
+          // Si se establece explícitamente como null o vacío, reactivar el prepago anterior
+          if (comanda.prepagoUSDID) {
+            const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: { id: comanda.prepagoUSDID },
+            });
+            if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
+              prepagoAnterior.estado = EstadoPrepago.ACTIVA;
+              await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+            }
+          }
+          comanda.prepagoUSDID = undefined;
+          console.log('✅ Prepago USD ID establecido como undefined por DTO null/vacío');
+        } else if (actualizarComandaDto.prepagoUSDID) {
+          // Solo si se proporciona un ID válido (no undefined, null, o vacío)
+          console.log('🔄 Asignando nuevo prepago USD:', actualizarComandaDto.prepagoUSDID);
+          // Si había un prepago anterior diferente, reactivarlo
+          if (comanda.prepagoUSDID && comanda.prepagoUSDID !== actualizarComandaDto.prepagoUSDID) {
+            const prepagoAnterior = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: { id: comanda.prepagoUSDID },
+            });
+            if (prepagoAnterior && prepagoAnterior.estado === EstadoPrepago.UTILIZADA) {
+              prepagoAnterior.estado = EstadoPrepago.ACTIVA;
+              await queryRunner.manager.save(PrepagoGuardado, prepagoAnterior);
+            }
+          }
+          
+          // Actualizar con el nuevo prepago
+          comanda.prepagoUSDID = actualizarComandaDto.prepagoUSDID;
+          console.log('✅ Prepago USD ID asignado:', comanda.prepagoUSDID);
+          
+          // Marcar el nuevo prepago como utilizado si existe
+          if (comanda.cliente) {
+            const nuevoPrepago = await queryRunner.manager.findOne(PrepagoGuardado, {
+              where: {
+                id: actualizarComandaDto.prepagoUSDID,
+                cliente: { id: comanda.cliente.id },
+                estado: EstadoPrepago.ACTIVA,
+                moneda: TipoMoneda.USD,
+              },
+            });
+            if (nuevoPrepago) {
+              nuevoPrepago.estado = EstadoPrepago.UTILIZADA;
+              await queryRunner.manager.save(PrepagoGuardado, nuevoPrepago);
+            }
           }
         }
-        
-        // Actualizar con el nuevo prepago
-        comanda.prepagoUSDID = actualizarComandaDto.prepagoUSDID;
-        
-        // Marcar el nuevo prepago como utilizado si existe
-        if (actualizarComandaDto.prepagoUSDID && comanda.cliente) {
-          const nuevoPrepago = await queryRunner.manager.findOne(PrepagoGuardado, {
-            where: {
-              id: actualizarComandaDto.prepagoUSDID,
-              cliente: { id: comanda.cliente.id },
-              estado: EstadoPrepago.ACTIVA,
-              moneda: TipoMoneda.USD,
-            },
-          });
-          if (nuevoPrepago) {
-            nuevoPrepago.estado = EstadoPrepago.UTILIZADA;
-            await queryRunner.manager.save(PrepagoGuardado, nuevoPrepago);
-          }
-        }
+        // Si actualizarComandaDto.prepagoUSDID es undefined, NO hacer nada
+        // (esto permite que la lógica de usuarioConsumePrepagoUSD funcione correctamente)
+      } else {
+        console.log('ℹ️ No se procesa prepagoUSDID - DTO es undefined');
       }
 
       // 3. Actualizar creadoPor solo si se proporciona
@@ -853,11 +937,35 @@ export class ComandaService {
         }
       }
 
+      // Logs de debug antes de guardar
+      console.log('🔍 Antes de guardar - prepagoARSID:', comanda.prepagoARSID);
+      console.log('🔍 Antes de guardar - prepagoUSDID:', comanda.prepagoUSDID);
+      console.log('🔍 Antes de guardar - usuarioConsumePrepagoARS:', comanda.usuarioConsumePrepagoARS);
+      console.log('🔍 Antes de guardar - usuarioConsumePrepagoUSD:', comanda.usuarioConsumePrepagoUSD);
+
       // 7. Guardar la comanda actualizada
       const comandaActualizada = await queryRunner.manager.save(
         Comanda,
         comanda,
       );
+
+      // 7.1. Enforzar en BD que los prepagos queden en NULL si los flags son false
+      if (comanda.usuarioConsumePrepagoARS === false) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({ prepagoARSID: () => 'NULL' })
+          .where('id = :id', { id: comandaActualizada.id })
+          .execute();
+      }
+      if (comanda.usuarioConsumePrepagoUSD === false) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({ prepagoUSDID: () => 'NULL' })
+          .where('id = :id', { id: comandaActualizada.id })
+          .execute();
+      }
 
       await queryRunner.commitTransaction();
 

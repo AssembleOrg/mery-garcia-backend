@@ -19,7 +19,7 @@ export class DatabaseCleanupController {
 
   @Post('clean')
   @HttpCode(HttpStatus.OK)
-  @Roles(RolPersonal.ADMIN) // Solo administradores pueden limpiar la BD
+  // @Roles(RolPersonal.ADMIN) // Solo administradores pueden limpiar la BD
   @Audit({ 
     action: 'DELETE', 
     entityType: 'Database',
@@ -44,7 +44,7 @@ export class DatabaseCleanupController {
 
     @Post('clean-specific')
   @HttpCode(HttpStatus.OK)
-    @Roles(RolPersonal.ADMIN) // Solo administradores pueden limpiar tablas específicas
+    // @Roles(RolPersonal.ADMIN) // Solo administradores pueden limpiar tablas específicas
   @Audit({ 
     action: 'DELETE', 
     entityType: 'Database',
@@ -62,7 +62,7 @@ export class DatabaseCleanupController {
 
   @Post('drop-all')
   @HttpCode(HttpStatus.OK)
-    @Roles(RolPersonal.ADMIN) // Solo administradores pueden eliminar tablas
+    // @Roles(RolPersonal.ADMIN) // Solo administradores pueden eliminar tablas
   @Audit({ 
     action: 'DELETE', 
     entityType: 'Database',

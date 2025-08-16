@@ -58,7 +58,7 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap(async (response) => {
         try {
-          console.log(`Auditing ${action} action for ${entityType} by user ${userId}`);
+          // console.log(`Auditing ${action} action for ${entityType} by user ${userId}`);
           
           // Map action to TipoAccion
           const tipoAccion = this.mapActionToTipoAccion(action, entityType);
@@ -79,18 +79,18 @@ export class AuditInterceptor implements NestInterceptor {
             // Para UPDATE, usar body como datos anteriores
             const datosAnteriores = action === 'UPDATE' ? this.prepareEntityData(body, entityType) : null;
 
-            console.log('Audit Data:', {
-              tipoAccion,
-              modulo,
-              entidadId: entityId || response?.id || 'unknown',
-              descripcion,
-              datosAnteriores: datosAnteriores ? 'Present' : 'None',
-              datosNuevos: datosNuevos ? 'Present' : 'None',
-              observaciones,
-              ipAddress,
-              userAgent,
-              userId
-            });
+            // console.log('Audit Data:', {
+            //   tipoAccion,
+            //   modulo,
+            //   entidadId: entityId || response?.id || 'unknown',
+            //   descripcion,
+            //   datosAnteriores: datosAnteriores ? 'Present' : 'None',
+            //   datosNuevos: datosNuevos ? 'Present' : 'None',
+            //   observaciones,
+            //   ipAddress,
+            //   userAgent,
+            //   userId
+            // });
 
             await this.auditoriaService.registrar({
               tipoAccion,
