@@ -398,16 +398,18 @@ export class ClienteService {
       .createQueryBuilder('pg')
       .select('pg.moneda', 'moneda')
       .addSelect('COALESCE(SUM(pg.monto), 0)', 'total')
+      .addSelect('COALESCE(SUM(pg.montoTraspasado), 0)', 'montoTraspasado')
       .where('pg.estado = :estado', { estado: EstadoPrepago.ACTIVA })
       .groupBy('pg.moneda')
-      .getRawMany<{ moneda: TipoMoneda; total: string }>();
+      .getRawMany<{ moneda: TipoMoneda; total: string; montoTraspasado: string }>();
+      console.log(rows);
 
     let ars = 0;
     let usd = 0;
 
     for (const r of rows) {
-      if (r.moneda === TipoMoneda.ARS) ars = Number(r.total ?? 0);
-      if (r.moneda === TipoMoneda.USD) usd = Number(r.total ?? 0);
+      if (r.moneda === TipoMoneda.ARS) ars = Number(r.total ?? 0) - Number(r.montoTraspasado ?? 0);
+      if (r.moneda === TipoMoneda.USD) usd = Number(r.total ?? 0) - Number(r.montoTraspasado ?? 0);
     }
 
     return { ars, usd };

@@ -37,10 +37,11 @@ import { TipoAccion } from 'src/enums/TipoAccion.enum';
 import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
 import { LogAction } from 'src/decorators/log-action.decorator';
 import { Audit } from 'src/decorators/audit.decorator';
+import { Movimiento } from './entities/movimiento.entity';
 
 @ApiTags('Comandas')
 @Controller('comandas')
-@UseGuards(JwtAuthGuard, RolesGuard)
+// @UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ComandaController {
   constructor(
@@ -92,6 +93,66 @@ export class ComandaController {
     const comanda = await this.comandaService.crearEgreso(crearEgresoDto);
     
     return comanda;
+  }
+
+  @Post('actualizar-prepagos')
+  // @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @LogAction({ action: 'UPDATE', entityType: 'Comanda', description: 'Actualización masiva de prepagos en comandas' })
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Comanda',
+    description: 'Actualización masiva de campos prepagoARSID y prepagoUSDID basándose en señas',
+    includeRelations: true
+  })
+  @ApiOperation({
+    summary: 'Actualizar prepagos de comandas',
+    description: 'Actualiza automáticamente los campos prepagoARSID y prepagoUSDID de todas las comandas basándose en las señas aplicadas',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Prepagos actualizados exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        totalComandas: { type: 'number', description: 'Total de comandas procesadas' },
+        comandasActualizadas: { type: 'number', description: 'Comandas que fueron actualizadas' },
+        comandasConSeñas: { type: 'number', description: 'Comandas que contienen señas' },
+        errores: { 
+          type: 'array', 
+          items: { type: 'string' },
+          description: 'Lista de errores encontrados durante el proceso'
+        }
+      }
+    }
+  })
+  @ApiResponse({ status: 400, description: 'Error en el proceso de actualización' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  async actualizarPrepagosComandas() {
+    return await this.comandaService.actualizarPrepagosComandas();
+  }
+
+  @Get('maximo-ars-usd-egreso')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener el máximo ARS y USD de egreso',
+    description: 'Obtiene el máximo ARS y USD de egreso',
+  })
+
+  async obtenerMaximoArsUsdEgreso(): Promise<{
+    ars: number;
+    usd: number;
+  }> {
+    return await this.comandaService.obtenerMaximoArsUsdEgreso();
+  }
+
+  @Get('ultimo-residual')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener el último movimiento',
+    description: 'Obtiene el último movimiento creado',
+  })
+  async obtenerUltimoMovimiento(): Promise<Partial<Movimiento>> {
+    return await this.comandaService.ultimoMovimiento(false);
   }
 
   @Get('egreso/ultimo')

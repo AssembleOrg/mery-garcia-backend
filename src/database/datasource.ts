@@ -22,7 +22,7 @@ export default new DataSource({
   ],
 
   // No sincronizamos en producción
-  synchronize: false,
+  synchronize: true,
   logging: false,
 
   // Configurar timezone a nivel de conexión PostgreSQL

@@ -2,7 +2,7 @@ import {
   Injectable,
   NotFoundException,
   Logger,
-  BadRequestException
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
@@ -12,11 +12,13 @@ import { Personal } from '../../personal/entities/Personal.entity';
 import {
   CrearMovimientoDto,
   ActualizarMovimientoDto,
-  FiltrarMovimientosDto
+  FiltrarMovimientosDto,
 } from '../dto/movimiento.dto';
 import { AuditoriaService } from '../../auditoria/auditoria.service';
 import { TipoAccion } from '../../enums/TipoAccion.enum';
 import { ModuloSistema } from '../../enums/ModuloSistema.enum';
+import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
+import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 
 export interface MovimientosPaginados {
   data: Movimiento[];
@@ -43,7 +45,7 @@ export class MovimientoService {
     private personalRepository: Repository<Personal>,
     private auditoriaService: AuditoriaService,
     private dataSource: DataSource,
-  ) { }
+  ) {}
 
   async crear(dto: CrearMovimientoDto): Promise<Movimiento> {
     const newComentario = dto.comentario || '';
@@ -52,7 +54,9 @@ export class MovimientoService {
       throw new BadRequestException('El personal es requerido');
     }
     if (!dto.comandasValidadasIds?.length && !newComentario.length) {
-      throw new BadRequestException('Las comandas validadas o comentario son requeridos');
+      throw new BadRequestException(
+        'Las comandas validadas o comentario son requeridos',
+      );
     }
 
     /* ───── Transacción ───── */
@@ -78,17 +82,61 @@ export class MovimientoService {
           .createQueryBuilder()
           .update(Comanda)
           .set({
-            movimiento,                              // FK
+            movimiento, // FK
             estadoDeComanda: EstadoDeComanda.TRASPASADA,
           })
           .where({ id: In(dto.comandasValidadasIds) })
           .execute();
       }
 
+      const comandas = await qr.manager.find(Comanda, {
+        where: { id: In(dto.comandasValidadasIds) },
+        relations: ['prepagoARS', 'prepagoUSD'],
+      });
+
+      for (const comanda of comandas) {
+        if (comanda.prepagoARS) {
+          // Calcular el nuevo monto traspasado
+          const nuevoMontoTraspasado = Number(comanda.prepagoARS.montoTraspasado ?? 0) + Number(comanda.prepagoARS.monto);
+          
+          // Limitar al monto original del prepago
+          const montoTraspasadoFinal = Math.min(nuevoMontoTraspasado, Number(comanda.prepagoARS.monto));
+          
+          await qr.manager.update(PrepagoGuardado, comanda.prepagoARS.id, {
+            montoTraspasado: montoTraspasadoFinal,
+          });
+        }
+        if (comanda.prepagoUSD) {
+          // Calcular el nuevo monto traspasado
+          const nuevoMontoTraspasado = Number(comanda.prepagoUSD.montoTraspasado ?? 0) + Number(comanda.prepagoUSD.monto);
+          
+          // Limitar al monto original del prepago
+          const montoTraspasadoFinal = Math.min(nuevoMontoTraspasado, Number(comanda.prepagoUSD.monto));
+          
+          await qr.manager.update(PrepagoGuardado, comanda.prepagoUSD.id, {
+            montoTraspasado: montoTraspasadoFinal,
+          });
+        }
+      }
+
+      //Update señas activas
+      const prepagosGuardados = await qr.manager.find(PrepagoGuardado, {
+        where: {
+          estado: EstadoPrepago.ACTIVA,
+        },
+      });
+      prepagosGuardados.forEach((pg) => {
+        pg.montoTraspasado = Math.min(
+          Number(pg.montoTraspasado ?? 0) + Number(pg.monto ?? 0),
+          Number(pg.monto),
+        );
+      });
+      await qr.manager.save(PrepagoGuardado, prepagosGuardados);
+
       await qr.commitTransaction();
 
       /* 3. Devolver el movimiento con sus comandas */
-      return this.obtenerPorId(movimiento.id);     // método ya existente
+      return this.obtenerPorId(movimiento.id); // método ya existente
     } catch (err) {
       await qr.rollbackTransaction();
       throw new BadRequestException(err.message);
@@ -97,7 +145,9 @@ export class MovimientoService {
     }
   }
 
-  async obtenerTodos(filtros: FiltrarMovimientosDto): Promise<MovimientosPaginados> {
+  async obtenerTodos(
+    filtros: FiltrarMovimientosDto,
+  ): Promise<MovimientosPaginados> {
     try {
       const page = filtros?.page || 1;
       const limit = filtros?.limit || 20;
@@ -115,8 +165,13 @@ export class MovimientoService {
 
       // Aplicar ordenamiento
       const camposPermitidos = ['monto', 'residual', 'createdAt'];
-      const campoOrdenamiento = camposPermitidos.includes(orderBy) ? orderBy : 'createdAt';
-      queryBuilder.orderBy(`movimiento.${campoOrdenamiento}`, orderDirection as 'ASC' | 'DESC');
+      const campoOrdenamiento = camposPermitidos.includes(orderBy)
+        ? orderBy
+        : 'createdAt';
+      queryBuilder.orderBy(
+        `movimiento.${campoOrdenamiento}`,
+        orderDirection as 'ASC' | 'DESC',
+      );
 
       if (filtros.fechaDesde && filtros.fechaHasta) {
         const fechaDesde = new Date(filtros.fechaDesde);
@@ -124,11 +179,18 @@ export class MovimientoService {
         fechaDesde.setUTCHours(0, 0, 0, 0);
         fechaHasta.setUTCHours(23, 59, 59, 999);
         fechaHasta.setDate(fechaHasta.getDate() - 1);
-        queryBuilder.andWhere('movimiento.createdAt >= :fechaDesde', { fechaDesde });
-        queryBuilder.andWhere('movimiento.createdAt < :fechaHasta', { fechaHasta });
+        queryBuilder.andWhere('movimiento.createdAt >= :fechaDesde', {
+          fechaDesde,
+        });
+        queryBuilder.andWhere('movimiento.createdAt < :fechaHasta', {
+          fechaHasta,
+        });
       }
 
-      const [movimientos, total] = await queryBuilder.skip(skip).take(limit).getManyAndCount();
+      const [movimientos, total] = await queryBuilder
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount();
 
       return {
         data: movimientos,
@@ -142,7 +204,10 @@ export class MovimientoService {
         },
       };
     } catch (error) {
-      this.logger.error(`Error obteniendo movimientos: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error obteniendo movimientos: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -151,7 +216,7 @@ export class MovimientoService {
     try {
       const movimiento = await this.movimientoRepository.findOne({
         where: { id },
-        relations: ['comandas', 'personal']
+        relations: ['comandas', 'personal'],
       });
 
       if (!movimiento) {
@@ -160,44 +225,59 @@ export class MovimientoService {
 
       return movimiento;
     } catch (error) {
-      this.logger.error(`Error obteniendo movimiento por ID: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error obteniendo movimiento por ID: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  async actualizar(id: string, actualizarDto: ActualizarMovimientoDto): Promise<Movimiento> {
+  async actualizar(
+    id: string,
+    actualizarDto: ActualizarMovimientoDto,
+  ): Promise<Movimiento> {
     try {
       const movimiento = await this.obtenerPorId(id);
 
       // Verificar que la comanda existe si se está actualizando
       if (actualizarDto.comandasValidadasIds) {
         const comanda = await this.comandaRepository.findOne({
-          where: { id: In(actualizarDto.comandasValidadasIds) }
+          where: { id: In(actualizarDto.comandasValidadasIds) },
         });
 
         if (!comanda) {
-          throw new NotFoundException(`Comanda con ID ${actualizarDto.comandasValidadasIds} no encontrada`);
+          throw new NotFoundException(
+            `Comanda con ID ${actualizarDto.comandasValidadasIds} no encontrada`,
+          );
         }
       }
 
       // Verificar que el personal existe si se está actualizando
       if (actualizarDto.personalId) {
         const personal = await this.personalRepository.findOne({
-          where: { id: actualizarDto.personalId }
+          where: { id: actualizarDto.personalId },
         });
 
         if (!personal) {
-          throw new NotFoundException(`Personal con ID ${actualizarDto.personalId} no encontrado`);
+          throw new NotFoundException(
+            `Personal con ID ${actualizarDto.personalId} no encontrado`,
+          );
         }
       }
 
       Object.assign(movimiento, actualizarDto);
       const actualizado = await this.movimientoRepository.save(movimiento);
 
-      this.logger.log(`Movimiento actualizado: ${actualizado.id} - $${actualizado.montoARS}`);
+      this.logger.log(
+        `Movimiento actualizado: ${actualizado.id} - $${actualizado.montoARS}`,
+      );
       return actualizado;
     } catch (error) {
-      this.logger.error(`Error actualizando movimiento: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error actualizando movimiento: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -209,7 +289,10 @@ export class MovimientoService {
 
       this.logger.log(`Movimiento eliminado: ${id}`);
     } catch (error) {
-      this.logger.error(`Error eliminando movimiento: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error eliminando movimiento: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -218,7 +301,7 @@ export class MovimientoService {
     try {
       const movimiento = await this.movimientoRepository.findOne({
         where: { id },
-        withDeleted: true
+        withDeleted: true,
       });
 
       if (!movimiento) {
@@ -227,11 +310,13 @@ export class MovimientoService {
 
       await this.movimientoRepository.restore(id);
 
-
       this.logger.log(`Movimiento restaurado: ${id}`);
       return await this.obtenerPorId(id);
     } catch (error) {
-      this.logger.error(`Error restaurando movimiento: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error restaurando movimiento: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -241,10 +326,13 @@ export class MovimientoService {
       return await this.movimientoRepository.find({
         where: { comandas: { id: comandaId } },
         relations: ['personal'],
-        order: {}
+        order: {},
       });
     } catch (error) {
-      this.logger.error(`Error obteniendo movimientos por comanda: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error obteniendo movimientos por comanda: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -254,20 +342,25 @@ export class MovimientoService {
       return await this.movimientoRepository.find({
         where: { personal: { id: personalId } },
         relations: ['comanda'],
-        order: { createdAt: 'DESC' }
+        order: { createdAt: 'DESC' },
       });
     } catch (error) {
-      this.logger.error(`Error obteniendo movimientos por personal: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error obteniendo movimientos por personal: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
 
-  private aplicarFiltros(queryBuilder: SelectQueryBuilder<Movimiento>, filtros?: FiltrarMovimientosDto): void {
-
-
+  private aplicarFiltros(
+    queryBuilder: SelectQueryBuilder<Movimiento>,
+    filtros?: FiltrarMovimientosDto,
+  ): void {
     if (filtros?.personalId) {
-      queryBuilder.andWhere('movimiento.personalId = :personalId', { personalId: filtros.personalId });
+      queryBuilder.andWhere('movimiento.personalId = :personalId', {
+        personalId: filtros.personalId,
+      });
     }
-
   }
-} 
+}

@@ -14,6 +14,8 @@ import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
 import { TipoPago } from 'src/enums/TipoPago.enum';
+import { TipoMovimiento } from 'src/enums/TipoMovimiento.enum';
+import { Movimiento } from 'src/comanda/entities/movimiento.entity';
 
 
 
@@ -52,4 +54,10 @@ export class PrepagoGuardado {
 
   @Column({ type: 'enum', enum: TipoPago })
   tipoPago: TipoPago;
+
+  @Column({ type: 'numeric', precision: 12, scale: 2, default: 0 })
+  montoTraspasado?: number;
+
+  @Column({ type: 'enum', enum: TipoMovimiento, nullable: true })
+  tipoMovimiento?: TipoMovimiento;
 }

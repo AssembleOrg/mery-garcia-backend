@@ -46,9 +46,9 @@ import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.modul
         // Si usas migraciones:
         migrations: [path.join(__dirname, '..', 'migrations', '*.{ts,js}')],
 
-        synchronize: false,
         logging: false,
         autoLoadEntities: true,
+        synchronize: true,
         
         // Configuración de timezone para Argentina
         extra: {
