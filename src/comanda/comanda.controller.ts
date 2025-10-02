@@ -267,6 +267,61 @@ export class ComandaController {
     return await this.comandaService.getResumenCajaChica(filtros);
   }
 
+  @Get('resumen-caja-por-metodo-pago')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener resumen de caja diario con desglose por método de pago',
+    description: 'Obtiene un resumen de la caja chica para un día específico con los montos desglosados por tipo de método de pago (efectivo, tarjeta, transferencia, cheque, QR, gift card) en ambas monedas (ARS y USD). Si no se proporciona fecha, se usa el día actual por defecto. Ideal para datepickers de resumen diario.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen de caja diario por método de pago obtenido exitosamente',
+    schema: {
+      type: 'object',
+      properties: {
+        totalCompletados: { type: 'number', description: 'Total de comandas completadas (validadas)', example: 25 },
+        totalPendientes: { type: 'number', description: 'Total de comandas pendientes', example: 5 },
+        montoNetoUSD: { type: 'number', description: 'Monto neto en dólares (ingresos - egresos)', example: 1500.75 },
+        montoNetoARS: { type: 'number', description: 'Monto neto en pesos (ingresos - egresos)', example: 15000.50 },
+        montoDisponibleTrasladoUSD: { type: 'number', description: 'Monto disponible para traslado en dólares', example: 1500.75 },
+        montoDisponibleTrasladoARS: { type: 'number', description: 'Monto disponible para traslado en pesos', example: 15000.50 },
+        totalIngresosUSD: { type: 'number', description: 'Total de ingresos en dólares', example: 2000.00 },
+        totalIngresosARS: { type: 'number', description: 'Total de ingresos en pesos', example: 20000.00 },
+        totalEgresosUSD: { type: 'number', description: 'Total de egresos en dólares', example: 500.25 },
+        totalEgresosARS: { type: 'number', description: 'Total de egresos en pesos', example: 5000.50 },
+        comandasValidadasIds: { type: 'array', items: { type: 'string' }, description: 'IDs de las comandas validadas', example: ['uuid-1', 'uuid-2'] },
+        porMetodoPago: {
+          type: 'object',
+          description: 'Desglose de ingresos por método de pago y moneda',
+          properties: {
+            EFECTIVO: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            TARJETA: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            TRANSFERENCIA: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            CHEQUE: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            QR: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            GIFT_CARD: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+          },
+        },
+        porMetodoPagoEgresos: {
+          type: 'object',
+          description: 'Desglose de egresos por método de pago y moneda',
+          properties: {
+            EFECTIVO: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            TARJETA: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            TRANSFERENCIA: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            CHEQUE: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            QR: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            GIFT_CARD: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+          },
+        },
+      },
+    },
+  })
+  @ApiQuery({ name: 'fecha', required: false, type: String, description: 'Fecha del día a consultar (opcional, por defecto hoy). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-02' })
+  async obtenerResumenCajaPorMetodoPago(@Query() filtros: { fecha?: string }) {
+    return await this.comandaService.getResumenCajaPorMetodoPago(filtros);
+  }
+
   @Get('ultima')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
   @ApiOperation({

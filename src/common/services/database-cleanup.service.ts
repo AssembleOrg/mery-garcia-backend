@@ -8,7 +8,7 @@ export class DatabaseCleanupService {
   constructor(private dataSource: DataSource) {}
 
   async cleanAllTables(): Promise<{ message: string; tablesCleaned: string[] }> {
-    const queryRunner = this.dataSource.createQueryRunner();
+    const queryRunner = this.dataSource.createQueryRunner(); 
     const tablesCleaned: string[] = [];
 
     try {

@@ -15,6 +15,7 @@ import {
   Raw,
   IsNull,
 } from 'typeorm';
+import { DateTime } from 'luxon';
 import {
   Comanda,
   EstadoDeComanda,
@@ -1614,6 +1615,316 @@ export class ComandaService {
       totalEgresosUSD: helperComandas.totalEgresosUSD,
       totalEgresosARS: helperComandas.totalEgresosARS,
       comandasValidadasIds,
+    };
+  }
+
+  async getResumenCajaPorMetodoPago(filtros: {
+    fecha?: string;
+  }): Promise<{
+    totalCompletados: number;
+    totalPendientes: number;
+    montoNetoUSD: number;
+    montoNetoARS: number;
+    montoDisponibleTrasladoUSD: number;
+    montoDisponibleTrasladoARS: number;
+    totalIngresosUSD: number;
+    totalIngresosARS: number;
+    totalEgresosUSD: number;
+    totalEgresosARS: number;
+    comandasValidadasIds: string[];
+    porMetodoPago: {
+      [key in TipoPago]: {
+        ARS: number;
+        USD: number;
+      };
+    };
+    porMetodoPagoEgresos: {
+      [key in TipoPago]: {
+        ARS: number;
+        USD: number;
+      };
+    };
+  }> {
+    // Use today's date if not provided
+    const hoy = DateTime.now().setZone('America/Argentina/Buenos_Aires');
+    
+    // Parse the provided date or use today
+    const fechaSeleccionada = filtros.fecha 
+      ? DateTime.fromISO(filtros.fecha, { zone: 'America/Argentina/Buenos_Aires' })
+      : hoy;
+    
+    // Get start and end of the selected day
+    const fechaDesde = fechaSeleccionada.startOf('day').toJSDate();
+    const fechaHasta = fechaSeleccionada.endOf('day').toJSDate();
+    
+    console.log('DEBUG - Fecha solicitada:', filtros.fecha);
+    console.log('DEBUG - Fecha seleccionada:', fechaSeleccionada.toISO());
+    console.log('DEBUG - Fecha desde:', fechaDesde);
+    console.log('DEBUG - Fecha hasta:', fechaHasta);
+    
+    let comandasValidadasIds: string[] = [];
+
+    const comandas = await this.comandaRepository.find({
+      where: {
+        estadoDeComanda: In([
+          EstadoDeComanda.VALIDADO,
+          EstadoDeComanda.PENDIENTE,
+          EstadoDeComanda.TRASPASADA,
+        ]),
+        caja: Caja.CAJA_1,
+        createdAt: Raw((a) => `${a} >= :from AND ${a} < :to`, {
+          from: fechaDesde,
+          to: fechaHasta,
+        }),
+      },
+      relations: ['egresos', 'prepagoARS', 'prepagoUSD', 'items', 'items.metodosPago'],
+    });
+    
+    const prepagosGuardados = await this.prepagoGuardadoRepository.find({
+      where: {
+        estado: In([EstadoPrepago.ACTIVA, EstadoPrepago.UTILIZADA]),
+        fechaCreacion: Raw((a) => `${a} >= :from AND ${a} < :to`, {
+          from: fechaDesde,
+          to: fechaHasta,
+        }),
+      },
+    });
+    
+    console.log('DEBUG - Comandas encontradas:', comandas.length);
+    console.log('DEBUG - Prepagos guardados encontrados:', prepagosGuardados.length);
+    
+    const ultimoMovimiento = await this.movimientoRepository.findOne({
+      where: {
+        createdAt: Raw((a) => `${a} >= :from AND ${a} < :to`, {
+          from: fechaDesde,
+          to: fechaHasta,
+        }),
+        esIngreso: true,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+      relations: ['comandas'],
+    }) ?? {
+      residualARS: 0,
+      residualUSD: 0,
+    }
+
+    comandasValidadasIds = comandas.reduce<string[]>((acc, c) => {
+      if (c.estadoDeComanda === EstadoDeComanda.VALIDADO) {
+        acc.push(c.id);
+      }
+      return acc;
+    }, []);
+
+    // Initialize payment method breakdown for ingresos
+    const porMetodoPago: {
+      [key in TipoPago]: {
+        ARS: number;
+        USD: number;
+      };
+    } = {
+      [TipoPago.EFECTIVO]: { ARS: 0, USD: 0 },
+      [TipoPago.TARJETA]: { ARS: 0, USD: 0 },
+      [TipoPago.TRANSFERENCIA]: { ARS: 0, USD: 0 },
+      [TipoPago.CHEQUE]: { ARS: 0, USD: 0 },
+      [TipoPago.QR]: { ARS: 0, USD: 0 },
+      [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
+    };
+
+    // Initialize payment method breakdown for egresos
+    const porMetodoPagoEgresos: {
+      [key in TipoPago]: {
+        ARS: number;
+        USD: number;
+      };
+    } = {
+      [TipoPago.EFECTIVO]: { ARS: 0, USD: 0 },
+      [TipoPago.TARJETA]: { ARS: 0, USD: 0 },
+      [TipoPago.TRANSFERENCIA]: { ARS: 0, USD: 0 },
+      [TipoPago.CHEQUE]: { ARS: 0, USD: 0 },
+      [TipoPago.QR]: { ARS: 0, USD: 0 },
+      [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
+    };
+
+    const helperComandas = comandas.reduce(
+      (acc, comanda) => {
+        /* ---------- Egresos ---------- */
+        let totalEgresosARS = 0;
+        let totalEgresosUSD = 0;
+
+        (comanda.egresos ?? []).forEach((egreso) => {
+          if (egreso.moneda === TipoMoneda.ARS) {
+            totalEgresosARS += egreso.totalPesos ?? 0;
+          } else if (egreso.moneda === TipoMoneda.USD) {
+            totalEgresosUSD += egreso.totalDolar ?? 0;
+          }
+        });
+
+        acc.totalEgresosARS += totalEgresosARS;
+        acc.totalEgresosUSD += totalEgresosUSD;
+
+        /* ---------- Estado de comanda ---------- */
+        if (comanda.estadoDeComanda === EstadoDeComanda.VALIDADO) {
+          acc.totalCompletados++;
+        } else if (comanda.estadoDeComanda === EstadoDeComanda.PENDIENTE) {
+          acc.totalPendientes++;
+        }
+
+        /* ---------- Ingresos (USD + ARS en un solo recorrido) ---------- */
+        if (
+          comanda.tipoDeComanda === TipoDeComanda.INGRESO
+        ) {
+          // NO sumamos prepagos aquí porque ya se sumaron cuando se crearon
+          // Solo sumamos lo que realmente ingresó en esta comanda
+          const totalIngresosARS = Number(comanda.precioPesos);
+          const totalIngresosUSD = Number(comanda.precioDolar);
+          
+          acc.totalIngresosARS += totalIngresosARS;
+          acc.totalIngresosUSD += totalIngresosUSD;
+
+          /* ---------- Process payment methods by type (INGRESOS) ---------- */
+          if (comanda.items && comanda.items.length > 0) {
+            comanda.items.forEach((item) => {
+              if (item.metodosPago && item.metodosPago.length > 0) {
+                item.metodosPago.forEach((metodoPago) => {
+                  const montoFinal = Number(metodoPago.montoFinal ?? 0);
+                  const tipoMoneda = metodoPago.moneda;
+                  const tipoPago = metodoPago.tipo;
+
+                  if (tipoMoneda === TipoMoneda.ARS) {
+                    porMetodoPago[tipoPago].ARS += montoFinal - (Number(comanda.prepagoARS?.monto ?? 0));
+                  } else if (tipoMoneda === TipoMoneda.USD) {
+                    porMetodoPago[tipoPago].USD += montoFinal - (Number(comanda.prepagoUSD?.monto ?? 0));
+                  }
+                });
+              }
+            });
+          }
+        }
+
+        /* ---------- Egresos - Process payment methods by type ---------- */
+        if (
+          comanda.tipoDeComanda === TipoDeComanda.EGRESO
+        ) {
+          if (comanda.items && comanda.items.length > 0) {
+            comanda.items.forEach((item) => {
+              if (item.metodosPago && item.metodosPago.length > 0) {
+                item.metodosPago.forEach((metodoPago) => {
+                  console.table(metodoPago);
+                  const montoFinal = Number(metodoPago.montoFinal ?? 0);
+                  const tipoMoneda = metodoPago.moneda;
+                  const tipoPago = metodoPago.tipo;
+
+                  if (tipoMoneda === TipoMoneda.ARS) {
+                    porMetodoPagoEgresos[tipoPago].ARS += montoFinal;
+                  } else if (tipoMoneda === TipoMoneda.USD) {
+                    porMetodoPagoEgresos[tipoPago].USD += montoFinal;
+                  }
+                });
+              }
+            });
+          }
+        }
+
+        return acc;
+      },
+      {
+        totalCompletados: 0,
+        totalPendientes: 0,
+        totalEgresosARS: 0,
+        totalEgresosUSD: 0,
+        totalIngresosARS: 0,
+        totalIngresosUSD: 0,
+      },
+    );
+
+    let noComandasValues: {
+      montoSeñasARS: number;
+      montoSeñasUSD: number;
+    } = {
+      montoSeñasARS: 0,
+      montoSeñasUSD: 0,
+    };
+    if (comandas.length === 0 || comandas.every((c) => c.tipoDeComanda === TipoDeComanda.EGRESO)) {
+      noComandasValues = {
+        montoSeñasARS: prepagosGuardados
+          .filter((pg) => pg.moneda === TipoMoneda.ARS)
+          .reduce(
+            (acc, pg) =>
+              acc + Number(pg.monto) ,
+            0,
+          ),
+        montoSeñasUSD: prepagosGuardados
+          .filter((pg) => pg.moneda === TipoMoneda.USD)
+          .reduce(
+            (acc, pg) =>
+              acc + Number(pg.monto),
+            0,
+          ),
+      };
+    }
+
+    // Add prepago guardado amounts to payment method breakdown
+    prepagosGuardados.forEach((prepago) => {
+      const monto = Number(prepago.monto ?? 0);
+      const tipoMoneda = prepago.moneda;
+      const tipoPago = prepago.tipoPago;
+      
+      // console.log('DEBUG - Prepago guardado:', { tipoPago, tipoMoneda, monto });
+
+      if (tipoMoneda === TipoMoneda.ARS) {
+        porMetodoPago[tipoPago].ARS += monto;
+      } else if (tipoMoneda === TipoMoneda.USD) {
+        porMetodoPago[tipoPago].USD += monto;
+      }
+    });
+
+    const totalPrepagosARS = prepagosGuardados
+      .filter((pg) => pg.moneda === TipoMoneda.ARS)
+      .reduce(
+        (acc, pg) =>
+          acc + (Number(pg.monto)),
+        0,
+      );
+    const totalPrepagosUSD = prepagosGuardados
+      .filter((pg) => pg.moneda === TipoMoneda.USD)
+      .reduce(
+        (acc, pg) =>
+          acc + (Number(pg.monto)),
+        0,
+      );
+
+    // Solo ingresos brutos, sin restar egresos
+    const totalIngresosUSD = 
+      helperComandas.totalIngresosUSD + 
+      totalPrepagosUSD +
+      Number(ultimoMovimiento?.residualUSD ?? 0) +
+      noComandasValues.montoSeñasUSD;
+      
+    const totalIngresosARS = 
+      helperComandas.totalIngresosARS + 
+      totalPrepagosARS +
+      Number(ultimoMovimiento?.residualARS ?? 0) +
+      noComandasValues.montoSeñasARS;
+
+    // console.log('DEBUG - Desglose final por método de pago (INGRESOS):', JSON.stringify(porMetodoPago, null, 2));
+    // console.log('DEBUG - Desglose final por método de pago (EGRESOS):', JSON.stringify(porMetodoPagoEgresos, null, 2));
+
+    return {
+      totalCompletados: helperComandas.totalCompletados,
+      totalPendientes: helperComandas.totalPendientes,
+      montoNetoUSD: totalIngresosUSD,
+      montoNetoARS: totalIngresosARS,
+      montoDisponibleTrasladoUSD: totalIngresosUSD,
+      montoDisponibleTrasladoARS: totalIngresosARS,
+      totalIngresosUSD,
+      totalIngresosARS,
+      totalEgresosUSD: helperComandas.totalEgresosUSD,
+      totalEgresosARS: helperComandas.totalEgresosARS,
+      comandasValidadasIds,
+      porMetodoPago,
+      porMetodoPagoEgresos,
     };
   }
 
