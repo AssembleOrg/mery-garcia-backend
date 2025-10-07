@@ -300,6 +300,7 @@ export class ComandaController {
             CHEQUE: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
             QR: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
             GIFT_CARD: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            MERCADO_PAGO: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
           },
         },
         porMetodoPagoEgresos: {
@@ -312,6 +313,7 @@ export class ComandaController {
             CHEQUE: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
             QR: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
             GIFT_CARD: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
+            MERCADO_PAGO: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
           },
         },
       },

@@ -5,4 +5,5 @@ export enum TipoPago {
     CHEQUE = 'CHEQUE',
     QR = 'QR',
     GIFT_CARD = 'GIFT_CARD',
+    MERCADO_PAGO = 'MERCADO_PAGO',
 }

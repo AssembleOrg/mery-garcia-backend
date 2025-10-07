@@ -51,6 +51,12 @@ export class PorMetodoPagoDto {
     type: MontosPorMonedaDto,
   })
   [TipoPago.GIFT_CARD]: MontosPorMonedaDto;
+
+  @ApiProperty({
+    description: 'Montos para pagos con Mercado Pago',
+    type: MontosPorMonedaDto,
+  })
+  [TipoPago.MERCADO_PAGO]: MontosPorMonedaDto;
 }
 
 export class ResumenCajaPorMetodoPagoDto {
@@ -122,9 +128,15 @@ export class ResumenCajaPorMetodoPagoDto {
   comandasValidadasIds: string[];
 
   @ApiProperty({
-    description: 'Desglose de montos por método de pago y moneda',
+    description: 'Desglose de ingresos por método de pago y moneda',
     type: PorMetodoPagoDto,
   })
   porMetodoPago: PorMetodoPagoDto;
+
+  @ApiProperty({
+    description: 'Desglose de egresos por método de pago y moneda',
+    type: PorMetodoPagoDto,
+  })
+  porMetodoPagoEgresos: PorMetodoPagoDto;
 }
 

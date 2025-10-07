@@ -23,6 +23,7 @@ import { NumericTransformer } from 'src/common/transformers/numeric.transformer'
 import { Movimiento } from './movimiento.entity';
 import { ItemComanda } from './ItemComanda.entity';
 import { Egreso } from './egreso.entity';
+import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 
 export enum TipoDeComanda {
@@ -134,6 +135,13 @@ export class Comanda {
     onDelete: 'CASCADE',
   })
   items: ItemComanda[];
+
+  @OneToMany(() => MetodoPago, (mp) => mp.comanda, {
+    cascade: ['insert', 'update', 'remove'],
+    onDelete: 'CASCADE',
+  })
+  metodosPago?: MetodoPago[];
+
   /* ---------- Data ---------- */
   @Column({
     type: 'enum',
