@@ -4,6 +4,7 @@ import { TipoDeComanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity
 import { Type } from 'class-transformer';
 import { CrearItemComandaDto } from './item-comanda.dto';
 import { DescuentoDto } from './descuento.dto';
+import { MetodoPagoDto } from './metodoPago.dto';
 
 export class CrearComandaDto {
   @ApiProperty({
@@ -151,4 +152,21 @@ export class CrearComandaDto {
   @IsArray()
   @IsOptional()
   items?: CrearItemComandaDto[];
+
+  @ApiPropertyOptional({
+    description: 'Métodos de pago de la comanda (nueva funcionalidad, opcional)',
+    example: [{
+      tipo: 'EFECTIVO',
+      monto: 100,
+      montoFinal: 90,
+      descuentoGlobalPorcentaje: 10,
+      moneda: 'USD',
+      recargoPorcentaje: 0
+    }]
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MetodoPagoDto)
+  metodosPago?: MetodoPagoDto[];
 } 

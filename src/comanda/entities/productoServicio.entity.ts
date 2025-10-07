@@ -50,7 +50,7 @@ export class ProductoServicio {
   @Column({ type: 'int', nullable: true })
   duracion?: number;
 
-  @Index({ unique: true, where: "codigoBarras IS NOT NULL" })
+  @Index({ unique: true, where: '"codigoBarras" IS NOT NULL' })
   @Column({ length: 50, nullable: true })
   codigoBarras?: string;
 
