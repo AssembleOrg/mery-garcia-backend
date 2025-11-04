@@ -17,6 +17,11 @@ async function bootstrap() {
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);
 
+  // Habilitar trust proxy para que Express confíe en headers de proxy (nginx, load balancers)
+  // Esto permite que request.ip capture correctamente la IP real del cliente
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', true);
+
   // 1. Helmet: cabeceras HTTP seguras
   app.use(helmet());
 

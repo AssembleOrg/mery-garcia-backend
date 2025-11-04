@@ -76,7 +76,7 @@ export class LoggingInterceptor implements NestInterceptor {
             await this.auditoriaService.registrar({
               tipoAccion,
               modulo,
-              entidadId: entityId || response?.id || 'unknown',
+              entidadId: entityId || response?.id || null,
               descripcion,
               datosAnteriores,
               datosNuevos,

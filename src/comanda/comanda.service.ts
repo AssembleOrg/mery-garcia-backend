@@ -16,6 +16,8 @@ import {
   IsNull,
 } from 'typeorm';
 import { DateTime } from 'luxon';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 import {
   Comanda,
   EstadoDeComanda,
@@ -27,6 +29,7 @@ import { Personal } from 'src/personal/entities/Personal.entity';
 import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
+import { FiltrarComisionesDto } from './dto/comisiones.dto';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { TipoAccion } from 'src/enums/TipoAccion.enum';
 import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
@@ -34,7 +37,7 @@ import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { ItemComanda } from './entities/ItemComanda.entity';
 import { Descuento } from './entities/descuento.entity';
-import { ProductoServicio } from './entities/productoServicio.entity';
+import { ProductoServicio, TipoProductoServicio } from './entities/productoServicio.entity';
 import { Caja } from 'src/enums/Caja.enum';
 import { Egreso } from './entities/egreso.entity';
 import { CrearEgresoDto } from './dto/crear-egreso.dto';
@@ -1673,7 +1676,8 @@ export class ComandaService {
   }
 
   async getResumenCajaPorMetodoPago(filtros: {
-    fecha?: string;
+    fechaDesde?: string;
+    fechaHasta?: string;
   }): Promise<{
     totalCompletados: number;
     totalPendientes: number;
@@ -1703,31 +1707,31 @@ export class ComandaService {
         nombre: string;
         totalARS: number;
         totalUSD: number;
-        porMetodoPago: {
-          [key in TipoPago]: {
-            ARS: number;
-            USD: number;
-          };
-        };
       };
     };
   }> {
     // Use today's date if not provided
     const hoy = DateTime.now().setZone('America/Argentina/Buenos_Aires');
   
-    // Parse the provided date or use today
-    const fechaSeleccionada = filtros.fecha
-      ? DateTime.fromISO(filtros.fecha, { zone: 'America/Argentina/Buenos_Aires' })
+    // Parse the provided dates or use today
+    const fechaDesdeSeleccionada = filtros.fechaDesde
+      ? DateTime.fromISO(filtros.fechaDesde, { zone: 'America/Argentina/Buenos_Aires' })
       : hoy;
+    
+    const fechaHastaSeleccionada = filtros.fechaHasta
+      ? DateTime.fromISO(filtros.fechaHasta, { zone: 'America/Argentina/Buenos_Aires' })
+      : fechaDesdeSeleccionada;
   
-    // Get start and end of the selected day
-    const fechaDesde = fechaSeleccionada.startOf('day').toJSDate();
-    const fechaHasta = fechaSeleccionada.endOf('day').toJSDate();
+    // Get start and end of the selected date range
+    const fechaDesde = fechaDesdeSeleccionada.startOf('day').toJSDate();
+    const fechaHasta = fechaHastaSeleccionada.endOf('day').toJSDate();
   
-    console.log('DEBUG - Fecha solicitada:', filtros.fecha);
-    console.log('DEBUG - Fecha seleccionada:', fechaSeleccionada.toISO());
-    console.log('DEBUG - Fecha desde:', fechaDesde);
-    console.log('DEBUG - Fecha hasta:', fechaHasta);
+    console.log('DEBUG - Fecha desde solicitada:', filtros.fechaDesde);
+    console.log('DEBUG - Fecha hasta solicitada:', filtros.fechaHasta);
+    console.log('DEBUG - Fecha desde seleccionada:', fechaDesdeSeleccionada.toISO());
+    console.log('DEBUG - Fecha hasta seleccionada:', fechaHastaSeleccionada.toISO());
+    console.log('DEBUG - Fecha desde (Date):', fechaDesde);
+    console.log('DEBUG - Fecha hasta (Date):', fechaHasta);
   
     let comandasValidadasIds: string[] = [];
   
@@ -1806,17 +1810,31 @@ export class ComandaService {
         nombre: string;
         totalARS: number;
         totalUSD: number;
-        porMetodoPago: {
-          [key in TipoPago]: {
-            ARS: number;
-            USD: number;
-          };
-        };
       };
     } = {};
   
+    // Guardar comandas en archivo JSON para debugging
+    // if (comandas.length > 0) {
+    //   try {
+    //     const timestamp = DateTime.now().toFormat('yyyy-MM-dd_HH-mm-ss');
+    //     const fileName = `comandas-debug-${timestamp}.json`;
+    //     const filePath = join(process.cwd(), fileName);
+        
+    //     writeFileSync(
+    //       filePath,
+    //       JSON.stringify(comandas, null, 2),
+    //       'utf-8'
+    //     );
+        
+    //     this.logger.log(`Comandas guardadas en: ${fileName}`);
+    //   } catch (error) {
+    //     this.logger.error('Error al guardar archivo JSON de comandas:', error);
+    //   }
+    // }
+
     const helperComandas = comandas.reduce(
       (acc, comanda) => {
+
         /* ---------- Egresos ---------- */
         let totalEgresosARS = 0;
         let totalEgresosUSD = 0;
@@ -1874,56 +1892,184 @@ export class ComandaService {
           });
   
           /* ---------- Process breakdown by business unit (INGRESOS) ---------- */
-          comanda.items?.forEach((item) => {
-            const unidadNegocio = item.productoServicio?.unidadNegocio;
-  
-            if (unidadNegocio) {
-              // Initialize if not exists
-              if (!porUnidadNegocio[unidadNegocio.id]) {
-                porUnidadNegocio[unidadNegocio.id] = {
-                  nombre: unidadNegocio.nombre,
-                  totalARS: 0,
-                  totalUSD: 0,
-                  porMetodoPago: {
-                    [TipoPago.EFECTIVO]: { ARS: 0, USD: 0 },
-                    [TipoPago.TARJETA]: { ARS: 0, USD: 0 },
-                    [TipoPago.TRANSFERENCIA]: { ARS: 0, USD: 0 },
-                    [TipoPago.CHEQUE]: { ARS: 0, USD: 0 },
-                    [TipoPago.QR]: { ARS: 0, USD: 0 },
-                    [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
-                    [TipoPago.MERCADO_PAGO]: { ARS: 0, USD: 0 },
-                  },
-                };
-              }
-  
-              // Calculate the item's total based on payment methods
-              const metodosPagoItem = item.metodosPago && item.metodosPago.length > 0
-                ? item.metodosPago
-                : [];
-  
-              if (metodosPagoItem.length > 0) {
-                metodosPagoItem.forEach((metodoPago) => {
+          // Check if items have payment methods at item level
+          const tieneMetodosPagoEnItems = comanda.items?.some(
+            (item) => item.metodosPago && item.metodosPago.length > 0
+          );
+
+          if (tieneMetodosPagoEnItems) {
+            // If items have their own payment methods, use those
+            comanda.items?.forEach((item) => {
+              const unidadNegocio = item.productoServicio?.unidadNegocio;
+
+              if (unidadNegocio && item.metodosPago && item.metodosPago.length > 0) {
+                // Initialize if not exists
+                if (!porUnidadNegocio[unidadNegocio.id]) {
+                  porUnidadNegocio[unidadNegocio.id] = {
+                    nombre: unidadNegocio.nombre,
+                    totalARS: 0,
+                    totalUSD: 0,
+                  };
+                }
+
+                item.metodosPago.forEach((metodoPago) => {
                   const montoFinal = Number(metodoPago.montoFinal ?? 0);
                   const tipoMoneda = metodoPago.moneda;
-                  const tipoPago = metodoPago.tipo;
-  
+
                   if (tipoMoneda === TipoMoneda.ARS) {
                     porUnidadNegocio[unidadNegocio.id].totalARS += montoFinal;
-                    porUnidadNegocio[unidadNegocio.id].porMetodoPago[tipoPago].ARS += montoFinal;
                   } else if (tipoMoneda === TipoMoneda.USD) {
                     porUnidadNegocio[unidadNegocio.id].totalUSD += montoFinal;
-                    porUnidadNegocio[unidadNegocio.id].porMetodoPago[tipoPago].USD += montoFinal;
                   }
                 });
-              } else {
-                // If no payment methods at item level, use item subtotal
-                // This assumes the item price is in ARS by default or needs conversion
-                const subtotal = Number(item.subtotal ?? 0);
-                porUnidadNegocio[unidadNegocio.id].totalARS += subtotal;
-                // Note: We can't determine the payment method here, so it won't be added to porMetodoPago
+              }
+            });
+          } else {
+            // If payment methods are at comanda level, distribute proportionally
+            if (metodosPagoParaProcesar.length > 0 && comanda.items && comanda.items.length > 0) {
+              // Determine the currency of the comanda based on payment methods
+              const todosPagosEnUSD = metodosPagoParaProcesar.every(mp => mp.moneda === TipoMoneda.USD);
+              const todosPagosEnARS = metodosPagoParaProcesar.every(mp => mp.moneda === TipoMoneda.ARS);
+              
+              // Step 1: Calculate subtotal for each item (precio - descuento)
+              // Convert USD prices to ARS only when payments are in ARS
+              const itemsConSubtotales = comanda.items.map((item) => {
+                const unidadNegocio = item.productoServicio?.unidadNegocio;
+                let precio = Number(item.precio ?? 0);
+                const cantidad = Number(item.cantidad ?? 1);
+                const descuento = Number(item.descuento ?? 0);
+                
+                // Check if price needs to be converted from USD to ARS
+                const esPrecioCongelado = item.productoServicio?.esPrecioCongelado;
+                const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+                
+                // If not frozen price in ARS and all payments are in ARS, convert USD to ARS
+                if (todosPagosEnARS && (!esPrecioCongelado || precioFijoARS === 0)) {
+                  const valorDolar = Number(comanda.valorDolar ?? 1);
+                  precio = precio * valorDolar;
+                }
+                // If payments are in USD, keep USD prices as is (don't convert)
+                
+                const subtotal = (precio * cantidad) - descuento;
+                
+                return {
+                  item,
+                  unidadNegocio,
+                  subtotal,
+                  precio,
+                  descuento,
+                };
+              }).filter(x => x.unidadNegocio); // Only items with business unit
+
+              // Step 2: Group items by business unit and calculate their totals
+              const unidadesPorId = new Map<string, {
+                unidadNegocio: any,
+                totalItems: number,
+              }>();
+
+              itemsConSubtotales.forEach((itemData) => {
+                const unidadId = itemData.unidadNegocio.id;
+                
+                if (!unidadesPorId.has(unidadId)) {
+                  unidadesPorId.set(unidadId, {
+                    unidadNegocio: itemData.unidadNegocio,
+                    totalItems: 0,
+                  });
+                }
+                
+                const unidadData = unidadesPorId.get(unidadId)!;
+                unidadData.totalItems += itemData.subtotal;
+              });
+
+              // Step 3: Handle prepago (deposit) - subtract from highest value business unit
+              // Prepagos are NOT income for today, they were paid on a different day
+              let montoPrepagoADescontar = 0;
+              
+              if (comanda.usuarioConsumePrepagoARS && comanda.prepagoARS) {
+                const montoPrepagoARS = Number(comanda.prepagoARS.monto ?? 0);
+                
+                if (todosPagosEnARS) {
+                  // Prepago in ARS, payments in ARS - no conversion needed
+                  montoPrepagoADescontar = montoPrepagoARS;
+                } else if (todosPagosEnUSD) {
+                  // Prepago in ARS, payments in USD - convert ARS to USD
+                  const valorDolar = Number(comanda.valorDolar ?? 1);
+                  montoPrepagoADescontar = valorDolar > 0 ? montoPrepagoARS / valorDolar : 0;
+                }
+              }
+              else if (comanda.usuarioConsumePrepagoUSD && comanda.prepagoUSD) {
+                const montoPrepagoUSD = Number(comanda.prepagoUSD.monto ?? 0);
+                
+                if (todosPagosEnARS) {
+                  // Prepago in USD, payments in ARS - convert USD to ARS
+                  const valorDolar = Number(comanda.valorDolar ?? 1);
+                  montoPrepagoADescontar = montoPrepagoUSD * valorDolar;
+                } else if (todosPagosEnUSD) {
+                  // Prepago in USD, payments in USD - no conversion needed
+                  montoPrepagoADescontar = montoPrepagoUSD;
+                }
+              }
+
+              // Step 4: Find business unit with highest value and subtract prepago
+              let unidadConMayorValor: string | null = null;
+              let mayorValor = 0;
+
+              unidadesPorId.forEach((data, unidadId) => {
+                if (data.totalItems > mayorValor) {
+                  mayorValor = data.totalItems;
+                  unidadConMayorValor = unidadId;
+                }
+              });
+
+              // Step 5: Calculate totals after subtracting prepago from highest value unit
+              const unidadesAjustadas = new Map<string, number>();
+              
+              unidadesPorId.forEach((data, unidadId) => {
+                let totalAjustado = data.totalItems;
+                
+                // Subtract prepago from highest value business unit only
+                if (unidadId === unidadConMayorValor && montoPrepagoADescontar > 0) {
+                  totalAjustado = Math.max(0, totalAjustado - montoPrepagoADescontar);
+                }
+                
+                unidadesAjustadas.set(unidadId, totalAjustado);
+              });
+
+              // Step 6: Calculate total after prepago discount (this is the actual income for today)
+              const totalDespuesPrepago = Array.from(unidadesAjustadas.values()).reduce((sum, val) => sum + val, 0);
+
+              // Step 7: Distribute payment methods proportionally based on adjusted totals
+              if (totalDespuesPrepago > 0) {
+              metodosPagoParaProcesar.forEach((metodoPago) => {
+                const montoFinal = Number(metodoPago.montoFinal ?? 0);
+                const tipoMoneda = metodoPago.moneda;
+
+                  unidadesAjustadas.forEach((totalAjustado, unidadId) => {
+                    const unidadData = unidadesPorId.get(unidadId)!;
+                    
+                    // Initialize business unit if not exists
+                    if (!porUnidadNegocio[unidadId]) {
+                      porUnidadNegocio[unidadId] = {
+                        nombre: unidadData.unidadNegocio.nombre,
+                        totalARS: 0,
+                        totalUSD: 0,
+                      };
+                    }
+
+                    // Calculate proportional amount for this business unit
+                    const proporcion = totalAjustado / totalDespuesPrepago;
+                    const montoParaUnidad = montoFinal * proporcion;
+
+                  if (tipoMoneda === TipoMoneda.ARS) {
+                      porUnidadNegocio[unidadId].totalARS += montoParaUnidad;
+                  } else if (tipoMoneda === TipoMoneda.USD) {
+                      porUnidadNegocio[unidadId].totalUSD += montoParaUnidad;
+                  }
+                });
+              });
               }
             }
-          });
+          }
         }
   
         /* ---------- Egresos - Process payment methods by type ---------- */
@@ -2118,7 +2264,7 @@ export class ComandaService {
     }
 
     if (filtros.servicioId) {
-      queryBuilder.andWhere('servicio.id = :servicioId', {
+      queryBuilder.andWhere('productoServicio.id = :servicioId', {
         servicioId: filtros.servicioId,
       });
     }
@@ -2445,5 +2591,256 @@ export class ComandaService {
 
     // Si no hay prepagos antes de la comanda, tomar el más reciente en general
     return prepagosOrdenados[0];
+  }
+
+  /**
+   * Calcula las comisiones de los trabajadores en un rango de fechas
+   * @param fechaDesde - Fecha de inicio del rango
+   * @param fechaHasta - Fecha de fin del rango
+   * @returns Resumen de comisiones por trabajador con totales generales
+   */
+  async calcularComisionesTrabajadores(filtros: FiltrarComisionesDto): Promise<{
+    fechaDesde: string;
+    fechaHasta: string;
+    trabajadores: Array<{
+      trabajadorId: string;
+      nombre: string;
+      totalServicios: number;
+      totalProductos: number;
+      comisiones: {
+        servicios: number;
+        productos: number;
+        total: number;
+      };
+    }>;
+    totales: {
+      serviciosSinDescuento: number;
+      serviciosConDescuento: number;
+      productosSinDescuento: number;
+      productosConDescuento: number;
+      totalSinDescuento: number;
+      totalConDescuento: number;
+    };
+    totalComisiones: number;
+  }> {
+    const tz = 'America/Argentina/Buenos_Aires';
+
+    // Determinar rango de fechas
+    let fechaDesde: DateTime;
+    let fechaHasta: DateTime;
+
+    if (filtros.fechaDesde) {
+      fechaDesde = DateTime.fromISO(filtros.fechaDesde, { zone: tz }).startOf('day');
+    } else {
+      fechaDesde = DateTime.now().setZone(tz).startOf('day');
+    }
+
+    if (filtros.fechaHasta) {
+      fechaHasta = DateTime.fromISO(filtros.fechaHasta, { zone: tz }).endOf('day');
+    } else {
+      fechaHasta = fechaDesde.endOf('day');
+    }
+
+    // Consultar comandas en el rango de fechas
+    const comandas = await this.comandaRepository.find({
+      where: {
+        caja: Caja.CAJA_1,
+        createdAt: Between(fechaDesde.toJSDate(), fechaHasta.toJSDate()),
+        tipoDeComanda: TipoDeComanda.INGRESO,
+        estadoDeComanda: In([
+          EstadoDeComanda.VALIDADO,
+          EstadoDeComanda.PENDIENTE,
+          EstadoDeComanda.TRASPASADA,
+        ]),
+      },
+      relations: [
+        'items',
+        'items.trabajador',
+        'items.productoServicio',
+        'items.productoServicio.unidadNegocio',
+      ],
+    });
+
+    // Estructura para almacenar totales por trabajador
+    const totalesPorTrabajador = new Map<string, {
+      trabajadorId: string;
+      nombre: string;
+      totalServicios: number;
+      totalProductos: number;
+      cantidadConsultas: number;
+      totalConsultas: number;
+      unidadesNegocio: Map<string, number>; // nombre unidad -> cantidad
+      productosServicios: Map<string, { cantidad: number; tipo: string }>; // nombre producto/servicio -> {cantidad, tipo}
+    }>();
+
+    // Totales generales
+    let totalServiciosSinDescuento = 0;
+    let totalServiciosConDescuento = 0;
+    let totalProductosSinDescuento = 0;
+    let totalProductosConDescuento = 0;
+
+    // Procesar cada comanda y sus items
+    comandas.forEach((comanda) => {
+      comanda.items?.forEach((item) => {
+        if (!item.trabajador || !item.productoServicio) {
+          return; // Skip items sin trabajador o producto/servicio
+        }
+
+        const trabajadorId = item.trabajador.id;
+        const nombre = item.trabajador.nombre;
+        const tipo = item.productoServicio.tipo;
+        const unidadNegocio = item.productoServicio.unidadNegocio?.nombre;
+
+        // Verificar si es Rosario con consultas
+        const esRosarioConConsulta = nombre === 'Rosario' && unidadNegocio === 'Consultas';
+
+        // Calcular precio en ARS
+        let precio = Number(item.precio ?? 0);
+        const cantidad = Number(item.cantidad ?? 1);
+        const descuento = Number(item.descuento ?? 0);
+
+        // Si el precio está en USD, convertir a ARS usando valorDolar
+        const esPrecioCongelado = item.productoServicio?.esPrecioCongelado;
+        const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+        
+        // Si no es precio congelado en ARS, entonces está en USD
+        if (!esPrecioCongelado || precioFijoARS === 0) {
+          // Si se proporciona un valorDolar en los filtros, usarlo; de lo contrario, usar el de la comanda
+          const valorDolar = filtros.dolar && filtros.dolar > 0 
+            ? filtros.dolar 
+            : Number(comanda.valorDolar ?? 1);
+          precio = precio * valorDolar; // Convertir USD a ARS
+        }
+
+        // Inicializar o actualizar totales del trabajador
+        if (!totalesPorTrabajador.has(trabajadorId)) {
+          totalesPorTrabajador.set(trabajadorId, {
+            trabajadorId,
+            nombre,
+            totalServicios: 0,
+            totalProductos: 0,
+            cantidadConsultas: 0,
+            totalConsultas: 0,
+            unidadesNegocio: new Map(),
+            productosServicios: new Map(),
+          });
+        }
+
+        const trabajadorData = totalesPorTrabajador.get(trabajadorId)!;
+
+        // Contabilizar unidad de negocio
+        if (unidadNegocio) {
+          const unidadActual = trabajadorData.unidadesNegocio.get(unidadNegocio) || 0;
+          trabajadorData.unidadesNegocio.set(unidadNegocio, unidadActual + cantidad);
+        }
+
+        // Contabilizar producto/servicio
+        const nombreProductoServicio = item.productoServicio.nombre;
+        const productoActual = trabajadorData.productosServicios.get(nombreProductoServicio);
+        if (productoActual) {
+          productoActual.cantidad += cantidad;
+        } else {
+          trabajadorData.productosServicios.set(nombreProductoServicio, {
+            cantidad,
+            tipo: tipo === TipoProductoServicio.SERVICIO ? 'SERVICIO' : 'PRODUCTO',
+          });
+        }
+
+        // Si es Rosario con consultas, solo contar las consultas
+        if (esRosarioConConsulta) {
+          trabajadorData.cantidadConsultas += cantidad;
+          trabajadorData.totalConsultas = trabajadorData.cantidadConsultas * 10;
+          // No sumar a los totales generales ni al trabajador
+          return;
+        }
+
+        // Calcular subtotal en ARS
+        const subtotal = (precio * cantidad) - descuento;
+
+        // Aplicar -10% (multiplicar por 0.9)
+        const subtotalConDescuento = subtotal * 0.9;
+
+        // Acumular totales generales
+        if (tipo === TipoProductoServicio.SERVICIO) {
+          totalServiciosSinDescuento += subtotal;
+          totalServiciosConDescuento += subtotalConDescuento;
+        } else if (tipo === TipoProductoServicio.PRODUCTO) {
+          totalProductosSinDescuento += subtotal;
+          totalProductosConDescuento += subtotalConDescuento;
+        }
+
+        // Sumar al total correspondiente según el tipo
+        if (tipo === TipoProductoServicio.SERVICIO) {
+          trabajadorData.totalServicios += subtotalConDescuento;
+        } else if (tipo === TipoProductoServicio.PRODUCTO) {
+          trabajadorData.totalProductos += subtotalConDescuento;
+        }
+      });
+    });
+
+    // Calcular comisiones para cada trabajador
+    const trabajadores = Array.from(totalesPorTrabajador.values()).map((trabajadorData) => {
+      // Comisiones: 30% de servicios, 10% de productos
+      const comisionServicios = trabajadorData.totalServicios * 0.30;
+      const comisionProductos = trabajadorData.totalProductos * 0.10;
+      const totalComision = comisionServicios + comisionProductos;
+
+      // Convertir Map de unidades de negocio a objeto
+      const unidadesNegocio: Record<string, number> = {};
+      trabajadorData.unidadesNegocio.forEach((cantidad, nombre) => {
+        unidadesNegocio[nombre] = cantidad;
+      });
+
+      // Convertir Map de productos/servicios a array de objetos
+      const productosServicios: Array<{ nombre: string; cantidad: number; tipo: string }> = [];
+      trabajadorData.productosServicios.forEach((data, nombre) => {
+        productosServicios.push({
+          nombre,
+          cantidad: data.cantidad,
+          tipo: data.tipo,
+        });
+      });
+
+      return {
+        trabajadorId: trabajadorData.trabajadorId,
+        nombre: trabajadorData.nombre,
+        totalServicios: Number(trabajadorData.totalServicios.toFixed(2)),
+        totalProductos: Number(trabajadorData.totalProductos.toFixed(2)),
+        cantidadConsultas: trabajadorData.cantidadConsultas,
+        totalConsultas: Number(trabajadorData.totalConsultas.toFixed(2)),
+        unidadesNegocio,
+        productosServicios,
+        comisiones: {
+          servicios: Number(comisionServicios.toFixed(2)),
+          productos: Number(comisionProductos.toFixed(2)),
+          total: Number(totalComision.toFixed(2)),
+        },
+      };
+    });
+
+    // Calcular total general de comisiones
+    const totalComisiones = trabajadores.reduce(
+      (sum, t) => sum + t.comisiones.total,
+      0,
+    );
+
+    // Calcular totales generales
+    const totalSinDescuento = totalServiciosSinDescuento + totalProductosSinDescuento;
+    const totalConDescuento = totalServiciosConDescuento + totalProductosConDescuento;
+
+    return {
+      fechaDesde: fechaDesde.toISO() || fechaDesde.toString(),
+      fechaHasta: fechaHasta.toISO() || fechaHasta.toString(),
+      trabajadores,
+      totales: {
+        serviciosSinDescuento: Number(totalServiciosSinDescuento.toFixed(2)),
+        serviciosConDescuento: Number(totalServiciosConDescuento.toFixed(2)),
+        productosSinDescuento: Number(totalProductosSinDescuento.toFixed(2)),
+        productosConDescuento: Number(totalProductosConDescuento.toFixed(2)),
+        totalSinDescuento: Number(totalSinDescuento.toFixed(2)),
+        totalConDescuento: Number(totalConDescuento.toFixed(2)),
+      },
+      totalComisiones: Number(totalComisiones.toFixed(2)),
+    };
   }
 }

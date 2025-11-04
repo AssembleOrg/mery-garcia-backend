@@ -28,18 +28,93 @@ export class AuditoriaService {
   ) {}
 
   async registrar(data: AuditoriaData, entityManager?: EntityManager): Promise<Auditoria> {
-    const auditoria = this.auditoriaRepository.create({
-      ...data,
-      createdAt: new Date(),
-    });
+    try {
+      // Validar datos requeridos
+      if (!data.tipoAccion) {
+        console.error('[AuditoriaService] Error: tipoAccion es requerido', data);
+        throw new Error('tipoAccion es requerido para registrar auditoría');
+      }
 
-    // Si se proporciona un EntityManager (transacción), usarlo
-    if (entityManager) {
-      return await entityManager.save(Auditoria, auditoria);
+      if (!data.modulo) {
+        console.error('[AuditoriaService] Error: modulo es requerido', data);
+        throw new Error('modulo es requerido para registrar auditoría');
+      }
+
+      if (!data.descripcion) {
+        console.error('[AuditoriaService] Error: descripcion es requerida', data);
+        throw new Error('descripcion es requerida para registrar auditoría');
+      }
+
+      // Valores por defecto para campos opcionales
+      // Usar undefined en lugar de null para campos opcionales
+      const auditoriaData: any = {
+        tipoAccion: data.tipoAccion,
+        modulo: data.modulo,
+        descripcion: data.descripcion,
+        ipAddress: data.ipAddress || 'unknown',
+        userAgent: data.userAgent || 'unknown',
+        createdAt: new Date(),
+      };
+
+      // Solo agregar campos opcionales si tienen valor
+      if (data.datosAnteriores) {
+        auditoriaData.datosAnteriores = data.datosAnteriores;
+      }
+      if (data.datosNuevos) {
+        auditoriaData.datosNuevos = data.datosNuevos;
+      }
+      if (data.observaciones) {
+        auditoriaData.observaciones = data.observaciones;
+      }
+      if (data.usuario) {
+        auditoriaData.usuario = data.usuario;
+      }
+      if (data.entidadId) {
+        auditoriaData.entidadId = data.entidadId;
+      }
+
+      // Log para debugging
+      console.log('[AuditoriaService] Registrando auditoría:', {
+        tipoAccion: auditoriaData.tipoAccion,
+        modulo: auditoriaData.modulo,
+        descripcion: auditoriaData.descripcion?.substring(0, 50),
+        entidadId: auditoriaData.entidadId,
+        hasUsuario: !!auditoriaData.usuario,
+        ipAddress: auditoriaData.ipAddress,
+      });
+
+      const auditoria = this.auditoriaRepository.create(auditoriaData);
+
+      // Si se proporciona un EntityManager (transacción), usarlo
+      let savedAuditoria: Auditoria;
+      if (entityManager) {
+        savedAuditoria = (await entityManager.save(Auditoria, auditoria)) as unknown as Auditoria;
+      } else {
+        // Si no, usar el repositorio normal
+        savedAuditoria = (await this.auditoriaRepository.save(auditoria)) as unknown as Auditoria;
+      }
+
+      console.log('[AuditoriaService] Auditoría registrada exitosamente:', {
+        id: savedAuditoria.id,
+        tipoAccion: savedAuditoria.tipoAccion,
+        modulo: savedAuditoria.modulo,
+      });
+
+      return savedAuditoria;
+    } catch (error) {
+      console.error('[AuditoriaService] Error al registrar auditoría:', {
+        error: error.message,
+        stack: error.stack,
+        data: {
+          tipoAccion: data?.tipoAccion,
+          modulo: data?.modulo,
+          descripcion: data?.descripcion?.substring(0, 50),
+          entidadId: data?.entidadId,
+          hasUsuario: !!data?.usuario,
+        },
+      });
+      throw error;
     }
-
-    // Si no, usar el repositorio normal
-    return await this.auditoriaRepository.save(auditoria);
   }
 
   async obtenerConPaginacion(filtros: FiltrarAuditoriaDto) {

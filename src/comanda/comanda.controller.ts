@@ -270,12 +270,12 @@ export class ComandaController {
   @Get('resumen-caja-por-metodo-pago')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
   @ApiOperation({
-    summary: 'Obtener resumen de caja diario con desglose por método de pago',
-    description: 'Obtiene un resumen de la caja chica para un día específico con los montos desglosados por tipo de método de pago (efectivo, tarjeta, transferencia, cheque, QR, gift card) en ambas monedas (ARS y USD). Si no se proporciona fecha, se usa el día actual por defecto. Ideal para datepickers de resumen diario.',
+    summary: 'Obtener resumen de caja con desglose por método de pago y unidad de negocio',
+    description: 'Obtiene un resumen de la caja chica para un rango de fechas con los montos desglosados por tipo de método de pago (efectivo, tarjeta, transferencia, cheque, QR, gift card) y por unidad de negocio en ambas monedas (ARS y USD). Si no se proporcionan fechas, se usa el día actual. Si se proporciona solo fechaDesde, se consulta ese día. Si ambas fechas son iguales, se consulta ese día específico.',
   })
   @ApiResponse({
     status: 200,
-    description: 'Resumen de caja diario por método de pago obtenido exitosamente',
+    description: 'Resumen de caja por método de pago obtenido exitosamente',
     schema: {
       type: 'object',
       properties: {
@@ -316,11 +316,24 @@ export class ComandaController {
             MERCADO_PAGO: { type: 'object', properties: { ARS: { type: 'number' }, USD: { type: 'number' } } },
           },
         },
+        porUnidadNegocio: {
+          type: 'object',
+          description: 'Desglose de ingresos por unidad de negocio',
+          additionalProperties: {
+            type: 'object',
+            properties: {
+              nombre: { type: 'string', example: 'Spa' },
+              totalARS: { type: 'number', example: 10000.50 },
+              totalUSD: { type: 'number', example: 1000.25 },
+            },
+          },
+        },
       },
     },
   })
-  @ApiQuery({ name: 'fecha', required: false, type: String, description: 'Fecha del día a consultar (opcional, por defecto hoy). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-02' })
-  async obtenerResumenCajaPorMetodoPago(@Query() filtros: { fecha?: string }) {
+  @ApiQuery({ name: 'fechaDesde', required: false, type: String, description: 'Fecha de inicio del rango a consultar (opcional, por defecto hoy). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-02' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha de fin del rango a consultar (opcional, por defecto igual a fechaDesde). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-05' })
+  async obtenerResumenCajaPorMetodoPago(@Query() filtros: { fechaDesde?: string; fechaHasta?: string }) {
     return await this.comandaService.getResumenCajaPorMetodoPago(filtros);
   }
 
@@ -342,6 +355,48 @@ export class ComandaController {
   })
   async existeComanda(@Param('numero') numero: string): Promise<boolean> {
     return await this.comandaService.existeComanda(numero);
+  }
+
+  @Get('comisiones')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({
+    summary: 'Calcular comisiones de trabajadores',
+    description: 'Calcula las comisiones de los trabajadores en un rango de fechas. Se resta el 10% del total de cada tipo (servicio/producto) y luego se aplica: 30% comisión para servicios, 10% comisión para productos. Si no se proporcionan fechas, se usa el día actual.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comisiones calculadas exitosamente',
+    type: Object,
+  })
+  @ApiQuery({
+    name: 'fechaDesde',
+    required: false,
+    description: 'Fecha de inicio del rango (formato: YYYY-MM-DD)',
+    example: '2025-10-01',
+  })
+  @ApiQuery({
+    name: 'fechaHasta',
+    required: false,
+    description: 'Fecha de fin del rango (formato: YYYY-MM-DD)',
+    example: '2025-10-31',
+  })
+  @ApiQuery({
+    name: 'dolar',
+    required: false,
+    type: Number,
+    description: 'Valor del dólar a utilizar para conversiones USD a ARS. Si no se proporciona, se usa el valorDolar de cada comanda individual.',
+    example: 1356,
+  })
+  async obtenerComisionesTrabajadores(
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('dolar') dolar?: number,
+  ) {
+    return await this.comandaService.calcularComisionesTrabajadores({
+      fechaDesde,
+      fechaHasta,
+      dolar,
+    });
   }
 
   @Get(':id')

@@ -25,8 +25,9 @@ export class AuditInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest<Request>();
     const { method, url, body, params, user } = request;
-    const forwardedFor = request.headers['x-forwarded-for'];
-    const ipAddress = request.ip || request.connection.remoteAddress || (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor) || 'unknown';
+    
+    // Mejorar la captura de la IP real considerando proxies (nginx, load balancers, cloudflare, etc)
+    const ipAddress = this.getRealIpAddress(request);
     const userAgent = request.get('User-Agent') || 'unknown';
 
     // Get metadata from decorator
@@ -40,77 +41,189 @@ export class AuditInterceptor implements NestInterceptor {
     const entityType = logMetadata?.entityType || this.getEntityTypeFromUrl(url);
     const entityId = params?.id || body?.id;
     
-    // Mejorar la captura del usuario
-    let userId = null;
-    if (user) {
-      userId = (user as any)?.sub || (user as any)?.id || (user as any)?.userId;
-    }
-    
-    // Si no hay userId en el user object, intentar obtenerlo del request
-    if (!userId) {
-      userId = (request as any)?.user?.sub || (request as any)?.user?.id || (request as any)?.user?.userId;
-    }
+    // Mejorar la captura del usuario - ser más robusto
+    const userId = this.extractUserId(user, request);
 
+    // Log para debugging cuando falta información crítica
     if (!action || !entityType) {
+      // console.log('[AuditInterceptor] Skipping audit - missing data:', {
+      //   url,
+      //   method,
+      //   action,
+      //   entityType,
+      //   hasUser: !!user,
+      //   userId: userId || 'NO_USER',
+      // });
       return next.handle();
     }
+
+    // Log para debugging de auditoría
+    console.log('[AuditInterceptor] Preparing audit:', {
+      action,
+      entityType,
+      entityId: entityId || 'NO_ID',
+      userId: userId || 'NO_USER',
+      ipAddress,
+      url,
+      method,
+    });
 
     return next.handle().pipe(
       tap(async (response) => {
         try {
-          // console.log(`Auditing ${action} action for ${entityType} by user ${userId}`);
-          
           // Map action to TipoAccion
           const tipoAccion = this.mapActionToTipoAccion(action, entityType);
           const modulo = this.mapEntityTypeToModulo(entityType);
           
-          if (tipoAccion && modulo) {
-            let descripcion = logMetadata?.description;
-            
-            // Generate description based on action and response
-            if (!descripcion) {
-              descripcion = this.generateDescription(action, entityType, response, body);
-            }
-
-            // Preparar datos para auditoría
-            const datosNuevos = this.prepareEntityData(response, entityType);
-            const observaciones = this.generateObservations(action, entityType, body, response);
-
-            // Para UPDATE, usar body como datos anteriores
-            const datosAnteriores = action === 'UPDATE' ? this.prepareEntityData(body, entityType) : null;
-
-            // console.log('Audit Data:', {
-            //   tipoAccion,
-            //   modulo,
-            //   entidadId: entityId || response?.id || 'unknown',
-            //   descripcion,
-            //   datosAnteriores: datosAnteriores ? 'Present' : 'None',
-            //   datosNuevos: datosNuevos ? 'Present' : 'None',
-            //   observaciones,
-            //   ipAddress,
-            //   userAgent,
-            //   userId
-            // });
-
-            await this.auditoriaService.registrar({
+          if (!tipoAccion || !modulo) {
+            console.warn('[AuditInterceptor] Cannot map to audit types:', {
+              action,
+              entityType,
               tipoAccion,
               modulo,
-              entidadId: entityId || response?.id || 'unknown',
-              descripcion,
-              datosAnteriores,
-              datosNuevos,
-              observaciones,
-              ipAddress,
-              userAgent,
-              usuario: userId ? { id: userId } as any : undefined,
+              url,
             });
+            return;
           }
+
+          let descripcion = logMetadata?.description;
+          
+          // Generate description based on action and response
+          if (!descripcion) {
+            descripcion = this.generateDescription(action, entityType, response, body);
+          }
+
+          // Preparar datos para auditoría
+          const datosNuevos = this.prepareEntityData(response, entityType);
+          const observaciones = this.generateObservations(action, entityType, body, response);
+
+          // Para UPDATE, usar body como datos anteriores
+          const datosAnteriores = action === 'UPDATE' ? this.prepareEntityData(body, entityType) : null;
+
+          // Determinar el entidadId de forma robusta
+          // Si no hay ID, usar null en lugar de 'unknown' porque entidadId es UUID nullable
+          const entidadId = entityId || response?.id || response?.data?.id || body?.id || null;
+
+          console.log('[AuditInterceptor] Saving audit:', {
+            tipoAccion,
+            modulo,
+            entidadId,
+            descripcion: descripcion?.substring(0, 50),
+            hasAnteriores: !!datosAnteriores,
+            hasNuevos: !!datosNuevos,
+            observaciones: observaciones?.substring(0, 50),
+            ipAddress,
+            userId: userId || 'NO_USER',
+          });
+
+          await this.auditoriaService.registrar({
+            tipoAccion,
+            modulo,
+            entidadId,
+            descripcion,
+            datosAnteriores,
+            datosNuevos,
+            observaciones,
+            ipAddress,
+            userAgent,
+            usuario: userId ? { id: userId } as any : null,
+          });
+
+          console.log('[AuditInterceptor] Audit saved successfully for:', {
+            action,
+            entityType,
+            entidadId,
+            userId: userId || 'NO_USER',
+          });
         } catch (error) {
           // Don't let logging errors break the main flow
-          console.error('Audit error:', error);
+          console.error('[AuditInterceptor] Error saving audit:', {
+            error: error.message,
+            stack: error.stack,
+            action,
+            entityType,
+            userId: userId || 'NO_USER',
+            url,
+          });
         }
       }),
     );
+  }
+
+  /**
+   * Extrae la IP real del cliente considerando proxies y load balancers
+   */
+  private getRealIpAddress(request: Request): string {
+    // Prioridad de headers para detectar IP real:
+    // 1. X-Real-IP (usado por nginx)
+    // 2. X-Forwarded-For (estándar, puede contener múltiples IPs)
+    // 3. CF-Connecting-IP (Cloudflare)
+    // 4. X-Client-IP
+    // 5. request.ip (Express)
+    // 6. socket remoteAddress
+    
+    const xRealIp = request.headers['x-real-ip'];
+    if (xRealIp && typeof xRealIp === 'string') {
+      return xRealIp.trim();
+    }
+
+    const xForwardedFor = request.headers['x-forwarded-for'];
+    if (xForwardedFor) {
+      // x-forwarded-for puede ser un string con múltiples IPs separadas por comas
+      // La primera IP es la del cliente original
+      const ips = (Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor)
+        .split(',')
+        .map(ip => ip.trim());
+      if (ips.length > 0 && ips[0]) {
+        return ips[0];
+      }
+    }
+
+    const cfConnectingIp = request.headers['cf-connecting-ip'];
+    if (cfConnectingIp && typeof cfConnectingIp === 'string') {
+      return cfConnectingIp.trim();
+    }
+
+    const xClientIp = request.headers['x-client-ip'];
+    if (xClientIp && typeof xClientIp === 'string') {
+      return xClientIp.trim();
+    }
+
+    // Fallback a request.ip de Express
+    if (request.ip) {
+      return request.ip;
+    }
+
+    // Último recurso: socket remoteAddress
+    const socket = (request as any).socket;
+    if (socket?.remoteAddress) {
+      return socket.remoteAddress;
+    }
+
+    return 'unknown';
+  }
+
+  /**
+   * Extrae el ID del usuario de forma robusta
+   */
+  private extractUserId(user: any, request: Request): string | null {
+    // Intentar obtener del objeto user directamente
+    if (user) {
+      // Prioridad: sub (estándar JWT), id, userId
+      if (user.sub) return user.sub;
+      if (user.id) return user.id;
+      if (user.userId) return user.userId;
+    }
+
+    // Intentar desde request.user
+    const reqUser = (request as any)?.user;
+    if (reqUser) {
+      if (reqUser.sub) return reqUser.sub;
+      if (reqUser.id) return reqUser.id;
+      if (reqUser.userId) return reqUser.userId;
+    }
+
+    return null;
   }
 
   private getActionFromMethod(method: string): 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | null {
@@ -128,21 +241,47 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private getEntityTypeFromUrl(url: string): string | null {
-    if (url.includes('/comandas')) return 'Comanda';
-    if (url.includes('/clientes')) return 'Cliente';
-    if (url.includes('/trabajadores')) return 'Trabajador';
-    if (url.includes('/prepagos-guardados')) return 'PrepagoGuardado';
-    if (url.includes('/items-comanda')) return 'ItemComanda';
+    // Auth debe ir primero para evitar conflictos con otros endpoints
     if (url.includes('/auth/login')) return 'Auth';
     if (url.includes('/auth/register')) return 'Auth';
+    if (url.includes('/auth')) return 'Auth';
+    
+    // Comandas y sus sub-recursos
+    if (url.includes('/items-comanda')) return 'ItemComanda';
+    if (url.includes('/comandas')) return 'Comanda';
+    
+    // Clientes
+    if (url.includes('/clientes')) return 'Cliente';
+    
+    // Personal y trabajadores
+    if (url.includes('/trabajadores')) return 'Trabajador';
+    if (url.includes('/personal')) return 'Personal';
+    
+    // Prepagos
+    if (url.includes('/prepagos-guardados')) return 'PrepagoGuardado';
+    
+    // Configuración
     if (url.includes('/dolar')) return 'Dolar';
+    
+    // Database
     if (url.includes('/database')) return 'Database';
+    
+    // Productos/Servicios y tipos
     if (url.includes('/productos-servicios')) return 'ProductoServicio';
     if (url.includes('/producto-servicio')) return 'ProductoServicio';
+    if (url.includes('/tipos-item')) return 'TipoItem';
+    if (url.includes('/tipo-item')) return 'TipoItem';
+    
+    // Movimientos
     if (url.includes('/movimientos')) return 'Movimiento';
-    if (url.includes('/tipo-items')) return 'TipoItem';
+    
+    // Unidades de negocio
     if (url.includes('/unidades-negocio')) return 'UnidadNegocio';
-    if (url.includes('/personal')) return 'Personal';
+    if (url.includes('/unidad-negocio')) return 'UnidadNegocio';
+    
+    // Auditoría
+    if (url.includes('/auditoria')) return 'Auditoria';
+    
     return null;
   }
 
@@ -189,6 +328,9 @@ export class AuditInterceptor implements NestInterceptor {
       },
       'LOGIN': {
         'Auth': TipoAccion.USUARIO_LOGIN,
+      },
+      'LOGOUT': {
+        'Auth': TipoAccion.USUARIO_LOGOUT,
       },
     };
 
