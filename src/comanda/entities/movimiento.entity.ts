@@ -22,6 +22,12 @@ export class Movimiento {
   @RelationId((m: Movimiento) => m.comandas)
   comandasValidadasIds!: string[];
 
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
+  efectivoARS: number;
+
+  @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
+  efectivoUSD: number;
+
   @ManyToOne(() => Personal, (p) => p.movimientos, {
     nullable: true,
     onDelete: 'SET NULL',
@@ -40,12 +46,12 @@ export class Movimiento {
   @Column({ type: 'numeric', precision: 30, scale: 2, default: 0 })
   residualUSD: number;
 
-  @CreateDateColumn({ type: 'timestamp', transformer: TimezoneTransformer })
+  @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamp', transformer: TimezoneTransformer })
+  @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   updatedAt: Date;
 
-  @DeleteDateColumn({ type: 'timestamp', transformer: TimezoneTransformer })
+  @DeleteDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   deletedAt: Date;
 }

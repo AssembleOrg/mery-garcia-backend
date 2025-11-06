@@ -38,6 +38,7 @@ import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
 import { LogAction } from 'src/decorators/log-action.decorator';
 import { Audit } from 'src/decorators/audit.decorator';
 import { Movimiento } from './entities/movimiento.entity';
+import { ActualizarEgresoDto } from './dto/actualizar-egreso.dto';
 
 @ApiTags('Comandas')
 @Controller('comandas')
@@ -93,6 +94,49 @@ export class ComandaController {
     const comanda = await this.comandaService.crearEgreso(crearEgresoDto);
     
     return comanda;
+  }
+
+  @Put('egresos/:id')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @LogAction({ action: 'UPDATE', entityType: 'Egreso', description: 'Egreso actualizado' })
+  @Audit({ 
+    action: 'UPDATE', 
+    entityType: 'Egreso',
+    description: 'Actualización de egreso con validación según caja',
+    includeRelations: true
+  })
+  @ApiOperation({
+    summary: 'Actualizar un egreso',
+    description: `Actualiza un egreso existente con las siguientes reglas:
+    
+- **CAJA_1**: Solo se pueden editar egresos que NO estén traspasados
+- **CAJA_2**: Se pueden editar egresos incluso si están traspasados (porque se traspasan automáticamente)
+
+Si es un egreso de CAJA_2 traspasado, actualiza automáticamente el movimiento asociado.`,
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del egreso a actualizar',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Egreso actualizado exitosamente',
+    type: Egreso,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Error de validación (ej: egreso de CAJA_1 ya traspasado, fondos insuficientes)',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Egreso no encontrado',
+  })
+  async actualizarEgreso(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() actualizarEgresoDto: ActualizarEgresoDto,
+  ): Promise<Egreso> {
+    return await this.comandaService.actualizarEgreso(id, actualizarEgresoDto);
   }
 
   @Post('actualizar-prepagos')
@@ -198,6 +242,7 @@ export class ComandaController {
   @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha hasta', example: '2024-07-31T23:59:59.000Z' })
   @ApiQuery({ name: 'orderBy', required: false, type: String, description: 'Campo de ordenamiento', example: 'createdAt' })
   @ApiQuery({ name: 'order', required: false, enum: ['ASC', 'DESC'], description: 'Orden de clasificación' })
+  @ApiQuery({ name: 'caja', required: false, enum: ['caja_1', 'caja_2'], description: 'Filtrar por caja', example: 'caja_1' })
   @ApiResponse({
     status: 200,
     description: 'Comandas obtenidas exitosamente',
@@ -231,39 +276,112 @@ export class ComandaController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Resumen de caja chica obtenido exitosamente',
+    description: 'Resumen de caja chica obtenido exitosamente con desglose detallado',
     schema: {
       type: 'object',
       properties: {
-        totalCompletados: { type: 'number' },
-        totalPendientes: { type: 'number' },
-        montoNetoUSD: { type: 'number' },
-        montoNetoARS: { type: 'number' },
-        montoDisponibleTrasladoUSD: { type: 'number' },
-        montoDisponibleTrasladoARS: { type: 'number' },
-        totalIngresosUSD: { type: 'number' },
-        totalIngresosARS: { type: 'number' },
-        totalEgresosUSD: { type: 'number' },
-        totalEgresosARS: { type: 'number' },
-        comandasValidadasIds: { type: 'array', items: { type: 'string' } },
+        totalCompletados: { type: 'number', description: 'Total de comandas completadas/validadas' },
+        totalPendientes: { type: 'number', description: 'Total de comandas pendientes' },
+        montoNetoUSD: { type: 'number', description: 'Monto neto total en USD' },
+        montoNetoARS: { type: 'number', description: 'Monto neto total en ARS' },
+        montoDisponibleTrasladoUSD: { type: 'number', description: 'Monto disponible para traslado en USD' },
+        montoDisponibleTrasladoARS: { type: 'number', description: 'Monto disponible para traslado en ARS' },
+        totalIngresosUSD: { type: 'number', description: 'Total de ingresos en USD' },
+        totalIngresosARS: { type: 'number', description: 'Total de ingresos en ARS' },
+        totalEgresosUSD: { type: 'number', description: 'Total de egresos en USD' },
+        totalEgresosARS: { type: 'number', description: 'Total de egresos en ARS' },
+        comandasValidadasIds: { type: 'array', items: { type: 'string' }, description: 'IDs de comandas validadas' },
+        desglose: {
+          type: 'object',
+          description: 'Desglose detallado de comandas, señas y egresos',
+          properties: {
+            comandas: {
+              type: 'array',
+              description: 'Lista de todas las comandas incluidas en el cálculo',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'ID de la comanda' },
+                  numero: { type: 'string', description: 'Número de comanda' },
+                  estado: { type: 'string', description: 'Estado de la comanda (VALIDADO, PENDIENTE)' },
+                  tipo: { type: 'string', description: 'Tipo de comanda (INGRESO, EGRESO)' },
+                  precioPesos: { type: 'number', description: 'Precio base en ARS' },
+                  precioDolar: { type: 'number', description: 'Precio base en USD' },
+                  prepagoARSId: { type: 'string', nullable: true, description: 'ID de la seña en ARS aplicada' },
+                  prepagoARSMonto: { type: 'number', description: 'Monto de seña en ARS aplicada' },
+                  prepagoUSDId: { type: 'string', nullable: true, description: 'ID de la seña en USD aplicada' },
+                  prepagoUSDMonto: { type: 'number', description: 'Monto de seña en USD aplicada' },
+                  totalARS: { type: 'number', description: 'Total ARS (precioPesos + prepagoARSMonto)' },
+                  totalUSD: { type: 'number', description: 'Total USD (precioDolar + prepagoUSDMonto)' },
+                  egresos: {
+                    type: 'array',
+                    description: 'Egresos asociados a esta comanda',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        moneda: { type: 'string' },
+                        monto: { type: 'number' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            prepagosGuardados: {
+              type: 'array',
+              description: 'Lista de señas (prepagos) activas del período',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'ID del prepago' },
+                  moneda: { type: 'string', description: 'Moneda (ARS o USD)' },
+                  monto: { type: 'number', description: 'Monto total de la seña' },
+                  montoTraspasado: { type: 'number', description: 'Monto ya utilizado' },
+                  disponible: { type: 'number', description: 'Monto disponible (monto - montoTraspasado)' },
+                  estado: { type: 'string', description: 'Estado del prepago (ACTIVA, UTILIZADA)' },
+                  clienteNombre: { type: 'string', description: 'Nombre del cliente asociado' },
+                },
+              },
+            },
+            egresos: {
+              type: 'array',
+              description: 'Lista de todos los egresos',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', description: 'ID del egreso' },
+                  comandaId: { type: 'string', description: 'ID de la comanda asociada' },
+                  comandaNumero: { type: 'string', description: 'Número de la comanda asociada' },
+                  moneda: { type: 'string', description: 'Moneda del egreso (ARS o USD)' },
+                  monto: { type: 'number', description: 'Monto del egreso' },
+                },
+              },
+            },
+            residualAnterior: {
+              type: 'object',
+              description: 'Residual del último movimiento anterior',
+              properties: {
+                ARS: { type: 'number' },
+                USD: { type: 'number' },
+              },
+            },
+            totalesPrepagos: {
+              type: 'object',
+              description: 'Totales de prepagos guardados disponibles',
+              properties: {
+                ARS: { type: 'number' },
+                USD: { type: 'number' },
+              },
+            },
+          },
+        },
       },
     },
   })
   @ApiQuery({ name: 'fechaDesde', required: false, type: String, description: 'Fecha desde', example: '2024-07-01T00:00:00.000Z' })
   @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha hasta', example: '2024-07-31T23:59:59.000Z' })
-  async obtenerResumenCajaChica(@Query() filtros: { fechaDesde: string, fechaHasta: string }): Promise<{
-    totalCompletados: number;
-    totalPendientes: number;
-    montoNetoUSD: number;
-    montoNetoARS: number;
-    montoDisponibleTrasladoUSD: number;
-    montoDisponibleTrasladoARS: number; 
-    totalIngresosUSD: number;
-    totalIngresosARS: number;
-    totalEgresosUSD: number;
-    totalEgresosARS: number;
-    comandasValidadasIds: string[];
-  }> {
+  async obtenerResumenCajaChica(@Query() filtros: { fechaDesde: string, fechaHasta: string }) {
     return await this.comandaService.getResumenCajaChica(filtros);
   }
 
@@ -331,10 +449,18 @@ export class ComandaController {
       },
     },
   })
+  @ApiQuery({ name: 'fecha', required: false, type: String, description: 'Fecha a consultar (alias de fechaDesde). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-02' })
   @ApiQuery({ name: 'fechaDesde', required: false, type: String, description: 'Fecha de inicio del rango a consultar (opcional, por defecto hoy). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-02' })
   @ApiQuery({ name: 'fechaHasta', required: false, type: String, description: 'Fecha de fin del rango a consultar (opcional, por defecto igual a fechaDesde). Formato: YYYY-MM-DD o ISO 8601', example: '2024-10-05' })
-  async obtenerResumenCajaPorMetodoPago(@Query() filtros: { fechaDesde?: string; fechaHasta?: string }) {
-    return await this.comandaService.getResumenCajaPorMetodoPago(filtros);
+  async obtenerResumenCajaPorMetodoPago(@Query() filtros: { fecha?: string; fechaDesde?: string; fechaHasta?: string }) {
+    // Si se pasa 'fecha', usarla como fechaDesde (para retrocompatibilidad)
+    const fechaDesde = filtros.fecha || filtros.fechaDesde;
+    const fechaHasta = filtros.fechaHasta;
+    
+    return await this.comandaService.getResumenCajaPorMetodoPago({
+      fechaDesde,
+      fechaHasta
+    });
   }
 
   @Get('ultima')
