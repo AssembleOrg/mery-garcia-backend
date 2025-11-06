@@ -246,22 +246,34 @@ export class AuditInterceptor implements NestInterceptor {
     if (url.includes('/auth/register')) return 'Auth';
     if (url.includes('/auth')) return 'Auth';
     
-    // Comandas y sus sub-recursos
+    // Comandas y sus sub-recursos (ordenar de más específico a menos específico)
+    if (url.includes('/comandas/egresos')) return 'Egreso';
     if (url.includes('/items-comanda')) return 'ItemComanda';
     if (url.includes('/comandas')) return 'Comanda';
     
-    // Clientes
+    // Clientes y sus sub-recursos
+    if (url.includes('/clientes/metodos-pago')) return 'MetodoPago';
+    if (url.includes('/metodos-pago')) return 'MetodoPago';
     if (url.includes('/clientes')) return 'Cliente';
     
     // Personal y trabajadores
     if (url.includes('/trabajadores')) return 'Trabajador';
     if (url.includes('/personal')) return 'Personal';
     
-    // Prepagos
+    // Prepagos (debe ir prepagos-guardados primero)
     if (url.includes('/prepagos-guardados')) return 'PrepagoGuardado';
+    if (url.includes('/prepagos')) return 'Prepago';
+    
+    // Descuentos
+    if (url.includes('/descuentos')) return 'Descuento';
+    
+    // Egresos (por si hay rutas alternativas)
+    if (url.includes('/egresos')) return 'Egreso';
     
     // Configuración
+    if (url.includes('/configuracion-sistema')) return 'ConfiguracionSistema';
     if (url.includes('/dolar')) return 'Dolar';
+    if (url.includes('/config')) return 'ConfiguracionSistema';
     
     // Database
     if (url.includes('/database')) return 'Database';
@@ -292,6 +304,7 @@ export class AuditInterceptor implements NestInterceptor {
         'Cliente': TipoAccion.CLIENTE_CREADO,
         'Trabajador': TipoAccion.TRABAJADOR_CREADO,
         'PrepagoGuardado': TipoAccion.PREPAGO_GUARDADO_CREADO,
+        'Prepago': TipoAccion.PREPAGO_CREADO,
         'ItemComanda': TipoAccion.ITEM_COMANDA_CREADO,
         'Auth': TipoAccion.USUARIO_CREADO,
         'Personal': TipoAccion.PERSONAL_CREADO,
@@ -299,12 +312,17 @@ export class AuditInterceptor implements NestInterceptor {
         'ProductoServicio': TipoAccion.PRODUCTO_SERVICIO_CREADO,
         'TipoItem': TipoAccion.TIPO_ITEM_CREADO,
         'UnidadNegocio': TipoAccion.UNIDAD_NEGOCIO_CREADA,
+        'Egreso': TipoAccion.EGRESO_CREADO,
+        'MetodoPago': TipoAccion.METODO_PAGO_CREADO,
+        'Descuento': TipoAccion.DESCUENTO_CREADO,
+        'ConfiguracionSistema': TipoAccion.CONFIG_CREADA,
       },
       'UPDATE': {
         'Comanda': TipoAccion.COMANDA_MODIFICADA,
         'Cliente': TipoAccion.CLIENTE_MODIFICADO,
         'Trabajador': TipoAccion.TRABAJADOR_MODIFICADO,
         'PrepagoGuardado': TipoAccion.PREPAGO_GUARDADO_MODIFICADO,
+        'Prepago': TipoAccion.PREPAGO_MODIFICADO,
         'ItemComanda': TipoAccion.ITEM_COMANDA_MODIFICADO,
         'Dolar': TipoAccion.DOLAR_ACTUALIZADO,
         'Personal': TipoAccion.PERSONAL_MODIFICADO,
@@ -312,18 +330,27 @@ export class AuditInterceptor implements NestInterceptor {
         'ProductoServicio': TipoAccion.PRODUCTO_SERVICIO_MODIFICADO,
         'TipoItem': TipoAccion.TIPO_ITEM_MODIFICADO,
         'UnidadNegocio': TipoAccion.UNIDAD_NEGOCIO_MODIFICADA,
+        'Egreso': TipoAccion.EGRESO_MODIFICADO,
+        'MetodoPago': TipoAccion.METODO_PAGO_MODIFICADO,
+        'Descuento': TipoAccion.DESCUENTO_MODIFICADO,
+        'ConfiguracionSistema': TipoAccion.CONFIG_MODIFICADA,
       },
       'DELETE': {
         'Comanda': TipoAccion.COMANDA_ELIMINADA,
         'Cliente': TipoAccion.CLIENTE_ELIMINADO,
         'Trabajador': TipoAccion.TRABAJADOR_ELIMINADO,
         'PrepagoGuardado': TipoAccion.PREPAGO_GUARDADO_ELIMINADO,
+        'Prepago': TipoAccion.PREPAGO_ELIMINADO,
         'ItemComanda': TipoAccion.ITEM_COMANDA_ELIMINADO,
         'Personal': TipoAccion.PERSONAL_ELIMINADO,
         'Movimiento': TipoAccion.MOVIMIENTO_ELIMINADO,
         'ProductoServicio': TipoAccion.PRODUCTO_SERVICIO_ELIMINADO,
         'TipoItem': TipoAccion.TIPO_ITEM_ELIMINADO,
         'UnidadNegocio': TipoAccion.UNIDAD_NEGOCIO_ELIMINADA,
+        'Egreso': TipoAccion.EGRESO_ELIMINADO,
+        'MetodoPago': TipoAccion.METODO_PAGO_ELIMINADO,
+        'Descuento': TipoAccion.DESCUENTO_ELIMINADO,
+        'ConfiguracionSistema': TipoAccion.CONFIG_ELIMINADA,
         'Database': TipoAccion.DATABASE_CLEANUP,
       },
       'LOGIN': {
@@ -354,10 +381,14 @@ export class AuditInterceptor implements NestInterceptor {
       'Sistema': ModuloSistema.SISTEMA,
       'Auditoria': ModuloSistema.AUDITORIA,
       'Config': ModuloSistema.CONFIG,
+      'ConfiguracionSistema': ModuloSistema.CONFIG,
       'Movimiento': ModuloSistema.MOVIMIENTO,
       'ProductoServicio': ModuloSistema.PRODUCTO_SERVICIO,
       'TipoItem': ModuloSistema.TIPO_ITEM,
       'UnidadNegocio': ModuloSistema.UNIDAD_NEGOCIO,
+      'Egreso': ModuloSistema.EGRESO,
+      'MetodoPago': ModuloSistema.METODO_PAGO,
+      'Descuento': ModuloSistema.DESCUENTO,
     };
 
     return moduloMap[entityType] || null;
@@ -378,6 +409,21 @@ export class AuditInterceptor implements NestInterceptor {
         if (entityType === 'Auth') {
           return `Usuario registrado: ${response?.email || 'N/A'}`;
         }
+        if (entityType === 'Egreso') {
+          return `Egreso creado: $${response?.total || 0} - Caja ${response?.caja || 'N/A'}`;
+        }
+        if (entityType === 'MetodoPago') {
+          return `Método de pago creado: ${response?.tipo || 'N/A'}`;
+        }
+        if (entityType === 'Descuento') {
+          return `Descuento creado: ${response?.porcentaje || 0}%`;
+        }
+        if (entityType === 'Prepago') {
+          return `Prepago creado: $${response?.monto || 0}`;
+        }
+        if (entityType === 'Movimiento') {
+          return `Movimiento creado: ARS $${response?.montoARS || 0}, USD $${response?.montoUSD || 0}`;
+        }
         return `${entityType} creado`;
       
       case 'UPDATE':
@@ -393,9 +439,30 @@ export class AuditInterceptor implements NestInterceptor {
         if (entityType === 'Dolar') {
           return `Cotización del dólar actualizada: Compra ${body?.compra}, Venta ${body?.venta}`;
         }
+        if (entityType === 'Egreso') {
+          return `Egreso actualizado: $${response?.total || body?.total || 0} - Caja ${response?.caja || body?.caja || 'N/A'}`;
+        }
+        if (entityType === 'MetodoPago') {
+          return `Método de pago actualizado: ${response?.tipo || body?.tipo || 'N/A'}`;
+        }
+        if (entityType === 'Descuento') {
+          return `Descuento actualizado: ${response?.porcentaje || body?.porcentaje || 0}%`;
+        }
+        if (entityType === 'Movimiento') {
+          return `Movimiento actualizado: ARS $${response?.montoARS || body?.montoARS || 0}, USD $${response?.montoUSD || body?.montoUSD || 0}`;
+        }
         return `${entityType} actualizado`;
       
       case 'DELETE':
+        if (entityType === 'Egreso') {
+          return `Egreso eliminado: ID ${response?.id || body?.id || 'N/A'}`;
+        }
+        if (entityType === 'MetodoPago') {
+          return `Método de pago eliminado: ${response?.tipo || 'N/A'}`;
+        }
+        if (entityType === 'Descuento') {
+          return `Descuento eliminado: ID ${response?.id || body?.id || 'N/A'}`;
+        }
         return `${entityType} eliminado`;
       
       case 'LOGIN':
@@ -467,6 +534,38 @@ export class AuditInterceptor implements NestInterceptor {
       if (response?.monto) observations.push(`Monto: ${response.monto}`);
       if (response?.moneda) observations.push(`Moneda: ${response.moneda}`);
       if (response?.estado) observations.push(`Estado: ${response.estado}`);
+    }
+
+    if (entityType === 'Prepago') {
+      if (response?.monto) observations.push(`Monto: ${response.monto}`);
+      if (response?.moneda) observations.push(`Moneda: ${response.moneda}`);
+    }
+
+    if (entityType === 'Egreso') {
+      if (response?.total) observations.push(`Total: ${response.total}`);
+      if (response?.totalDolar) observations.push(`Total USD: ${response.totalDolar}`);
+      if (response?.totalPesos) observations.push(`Total ARS: ${response.totalPesos}`);
+      if (response?.caja) observations.push(`Caja: ${response.caja}`);
+      if (response?.moneda) observations.push(`Moneda: ${response.moneda}`);
+      if (response?.valorDolar) observations.push(`Valor Dólar: ${response.valorDolar}`);
+    }
+
+    if (entityType === 'MetodoPago') {
+      if (response?.tipo) observations.push(`Tipo: ${response.tipo}`);
+      if (response?.montoFinal) observations.push(`Monto: ${response.montoFinal}`);
+      if (response?.moneda) observations.push(`Moneda: ${response.moneda}`);
+    }
+
+    if (entityType === 'Descuento') {
+      if (response?.porcentaje) observations.push(`Porcentaje: ${response.porcentaje}%`);
+      if (response?.motivo) observations.push(`Motivo: ${response.motivo}`);
+    }
+
+    if (entityType === 'Movimiento') {
+      if (response?.montoARS) observations.push(`Monto ARS: ${response.montoARS}`);
+      if (response?.montoUSD) observations.push(`Monto USD: ${response.montoUSD}`);
+      if (response?.esIngreso !== undefined) observations.push(`Es Ingreso: ${response.esIngreso}`);
+      if (response?.comentario) observations.push(`Comentario: ${response.comentario}`);
     }
 
     if (entityType === 'Dolar') {

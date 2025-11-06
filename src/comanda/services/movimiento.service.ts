@@ -5,10 +5,11 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, In, Raw, Repository, SelectQueryBuilder } from 'typeorm';
 import { Movimiento } from '../entities/movimiento.entity';
-import { Comanda, EstadoDeComanda } from '../entities/Comanda.entity';
+import { Comanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity';
 import { Personal } from '../../personal/entities/Personal.entity';
+import { Egreso } from '../entities/egreso.entity';
 import {
   CrearMovimientoDto,
   ActualizarMovimientoDto,
@@ -19,6 +20,7 @@ import { TipoAccion } from '../../enums/TipoAccion.enum';
 import { ModuloSistema } from '../../enums/ModuloSistema.enum';
 import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
+import { TipoPago } from 'src/enums/TipoPago.enum';
 
 export interface MovimientosPaginados {
   data: Movimiento[];
@@ -29,6 +31,10 @@ export interface MovimientosPaginados {
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+  };
+  netoEfectivo?: {
+    ARS: number;
+    USD: number;
   };
 }
 
@@ -43,6 +49,10 @@ export class MovimientoService {
     private comandaRepository: Repository<Comanda>,
     @InjectRepository(Personal)
     private personalRepository: Repository<Personal>,
+    @InjectRepository(PrepagoGuardado)
+    private prepagoGuardadoRepository: Repository<PrepagoGuardado>,
+    @InjectRepository(Egreso)
+    private egresoRepository: Repository<Egreso>,
     private auditoriaService: AuditoriaService,
     private dataSource: DataSource,
   ) {}
@@ -72,6 +82,8 @@ export class MovimientoService {
         residualARS: dto.residualARS,
         residualUSD: dto.residualUSD,
         comentario: newComentario,
+        efectivoARS: newComentario.includes("Egreso generado desde CAJA_1") ? 0 : dto.efectivoARS,
+        efectivoUSD: newComentario.includes("Egreso generado desde CAJA_1") ? 0 : dto.efectivoUSD,
         esIngreso: dto.esIngreso ?? true, // Por defecto true si no se especifica
         personal: { id: dto.personalId } as Personal, // stub: evita 1 SELECT
       });
@@ -174,15 +186,27 @@ export class MovimientoService {
       );
 
       if (filtros.fechaDesde && filtros.fechaHasta) {
+        // El frontend envía fechas en formato Argentina (UTC-3)
+        // Ejemplo: 2025-12-02T03:00:00.000Z = medianoche del 2 de diciembre en Argentina
+        // Usamos fechaDesde tal cual viene (ya es el inicio del día en Argentina)
         const fechaDesde = new Date(filtros.fechaDesde);
-        const fechaHasta = new Date(filtros.fechaHasta);
-        fechaDesde.setUTCHours(0, 0, 0, 0);
-        fechaHasta.setUTCHours(23, 59, 59, 999);
-        fechaHasta.setDate(fechaHasta.getDate() - 1);
+        
+        // Para fechaHasta, necesitamos sumar casi 24 horas para llegar al final del día en Argentina
+        // Si fechaHasta es 2025-12-02T03:00:00.000Z (medianoche Argentina del día 2)
+        // Queremos hasta 2025-12-03T02:59:59.999Z (23:59:59.999 Argentina del día 2)
+        const fechaHastaRaw = new Date(filtros.fechaHasta);
+        const fechaHasta = new Date(fechaHastaRaw.getTime() + (24 * 60 * 60 * 1000) - 1);
+        
+        console.log('\n📅 Filtros de fecha (Argentina UTC-3):');
+        console.log(`   fechaDesde (original): ${filtros.fechaDesde}`);
+        console.log(`   fechaDesde (usada): ${fechaDesde.toISOString()}`);
+        console.log(`   fechaHasta (original): ${filtros.fechaHasta}`);
+        console.log(`   fechaHasta (usada): ${fechaHasta.toISOString()}`);
+        
         queryBuilder.andWhere('movimiento.createdAt >= :fechaDesde', {
           fechaDesde,
         });
-        queryBuilder.andWhere('movimiento.createdAt < :fechaHasta', {
+        queryBuilder.andWhere('movimiento.createdAt <= :fechaHasta', {
           fechaHasta,
         });
       }
@@ -191,6 +215,29 @@ export class MovimientoService {
         .skip(skip)
         .take(limit)
         .getManyAndCount();
+
+      console.log('Movimientos:', movimientos.length);
+
+      // Calcular neto de efectivo usando los campos efectivoARS y efectivoUSD de los movimientos
+      let netoEfectivo: { ARS: number; USD: number } | undefined;
+
+      //filter movimientos
+      const movEgresosCaja2 = movimientos.filter(mov => mov.comentario?.includes('Egreso generado desde CAJA_1'));
+      
+      if (filtros.fechaDesde && filtros.fechaHasta) {
+        // Sumar directamente los campos efectivoARS y efectivoUSD de los movimientos filtrados
+        netoEfectivo = {
+          ARS: movimientos.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.efectivoARS) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.montoARS) : 0), 0),
+          USD: movimientos.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.efectivoUSD) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.montoUSD) : 0), 0),
+        };
+        
+        console.log('\n📊 Cálculo netoEfectivo desde campos de movimientos:');
+        console.log(`   Total movimientos en período: ${movimientos.length}`);
+        console.log(`   Movimientos con efectivoARS > 0: ${movimientos.filter(mov => mov.efectivoARS > 0).length}`);
+        console.log(`   Movimientos con efectivoUSD > 0: ${movimientos.filter(mov => mov.efectivoUSD > 0).length}`);
+        console.log(`   Neto efectivo ARS: ${netoEfectivo.ARS}`);
+        console.log(`   Neto efectivo USD: ${netoEfectivo.USD}`);
+      }
 
       return {
         data: movimientos,
@@ -202,6 +249,7 @@ export class MovimientoService {
           hasNextPage: page < Math.ceil(total / limit),
           hasPreviousPage: page > 1,
         },
+        netoEfectivo,
       };
     } catch (error) {
       this.logger.error(
@@ -283,17 +331,92 @@ export class MovimientoService {
   }
 
   async eliminar(id: string): Promise<void> {
-    try {
-      const movimiento = await this.obtenerPorId(id);
-      await this.movimientoRepository.softRemove(movimiento);
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
 
-      this.logger.log(`Movimiento eliminado: ${id}`);
+    try {
+      // 1. Obtener el movimiento con sus comandas y prepagos
+      const movimiento = await qr.manager.findOne(Movimiento, {
+        where: { id },
+        relations: ['comandas', 'comandas.prepagoARS', 'comandas.prepagoUSD'],
+      });
+
+      if (!movimiento) {
+        throw new NotFoundException(`Movimiento con ID ${id} no encontrado`);
+      }
+
+      const comandas = movimiento.comandas || [];
+      console.log(`📦 Revertiendo ${comandas.length} comandas asociadas al movimiento ${id}`);
+
+      // 2. Revertir comandas: cambiar estado a VALIDADO y quitar relación con movimiento
+      if (comandas.length > 0) {
+        const comandaIds = comandas.map((c) => c.id);
+        await qr.manager
+          .createQueryBuilder()
+          .update(Comanda)
+          .set({
+            movimiento: null,
+            estadoDeComanda: EstadoDeComanda.VALIDADO,
+          })
+          .where({ id: In(comandaIds) })
+          .execute();
+
+        console.log(`✅ ${comandas.length} comandas revertidas a estado VALIDADO`);
+      }
+
+      // 3. Revertir cambios en prepagos asociados a comandas
+      const prepagosAfectados = new Set<string>();
+      for (const comanda of comandas) {
+        if (comanda.prepagoARS) {
+          prepagosAfectados.add(comanda.prepagoARS.id);
+        }
+        if (comanda.prepagoUSD) {
+          prepagosAfectados.add(comanda.prepagoUSD.id);
+        }
+      }
+
+      // Obtener prepagos para revertir montoTraspasado
+      if (prepagosAfectados.size > 0) {
+        const prepagos = await qr.manager.find(PrepagoGuardado, {
+          where: { id: In(Array.from(prepagosAfectados)) },
+        });
+
+        for (const prepago of prepagos) {
+          const montoPrepago = Number(prepago.monto ?? 0);
+          const montoTraspasadoActual = Number(prepago.montoTraspasado ?? 0);
+          
+          // Restar el monto del prepago del montoTraspasado
+          const nuevoMontoTraspasado = Math.max(0, montoTraspasadoActual - montoPrepago);
+          
+          await qr.manager.update(PrepagoGuardado, prepago.id, {
+            montoTraspasado: nuevoMontoTraspasado,
+          });
+
+          console.log(
+            `✅ Prepago ${prepago.id.substring(0, 8)}...: montoTraspasado ${montoTraspasadoActual} → ${nuevoMontoTraspasado}`,
+          );
+        }
+      }
+
+      // Nota: No revertimos los prepagos activos generales porque:
+      // 1. No podemos saber si fueron afectados solo por este movimiento o por otros
+      // 2. Solo revertimos los prepagos específicos asociados a las comandas del movimiento
+
+      // 5. Eliminar el movimiento (hard delete)
+      await qr.manager.delete(Movimiento, { id });
+
+      await qr.commitTransaction();
+      this.logger.log(`Movimiento ${id} eliminado y cambios revertidos exitosamente`);
     } catch (error) {
+      await qr.rollbackTransaction();
       this.logger.error(
         `Error eliminando movimiento: ${error.message}`,
         error.stack,
       );
       throw error;
+    } finally {
+      await qr.release();
     }
   }
 

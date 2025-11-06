@@ -14,6 +14,7 @@ import {
   Between,
   Raw,
   IsNull,
+  Or,
 } from 'typeorm';
 import { DateTime } from 'luxon';
 import { writeFileSync } from 'fs';
@@ -45,6 +46,7 @@ import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { TipoItem } from './entities/TipoItem.entity';
 import { TipoPago } from 'src/enums/TipoPago.enum';
 import { Movimiento } from './entities/movimiento.entity';
+import { ActualizarEgresoDto } from './dto/actualizar-egreso.dto';
 
 export interface ComandasPaginadas {
   data: Comanda[];
@@ -77,11 +79,13 @@ export class ComandaService {
     private prepagoGuardadoRepository: Repository<PrepagoGuardado>,
     @InjectRepository(ItemComanda)
     private itemComandaRepository: Repository<ItemComanda>,
+    @InjectRepository(Egreso)
+    private egresoRepository: Repository<Egreso>,
     private dataSource: DataSource,
     private auditoriaService: AuditoriaService,
     @InjectRepository(Movimiento)
     private movimientoRepository: Repository<Movimiento>,
-  ) {}
+  ) { }
 
   async crear(crearComandaDto: CrearComandaDto): Promise<Comanda> {
     const queryRunner = this.dataSource.createQueryRunner();
@@ -478,7 +482,7 @@ export class ComandaService {
         const productosServicio = comanda.items.filter(
           (item) =>
             item.productoServicio.unidadNegocio.id ===
-              filtros.unidadNegocioId &&
+            filtros.unidadNegocioId &&
             item.productoServicio.id === filtros.servicioId,
         );
         //!Realmente no se si es necesario hacer esto, porque ya se filtra por servicio y unidadNegocio en el queryBuilder
@@ -507,7 +511,7 @@ export class ComandaService {
           );
         }
       }
-    } 
+    }
 
     return {
       data: newComandas.length > 0 ? newComandas : comandas,
@@ -1156,6 +1160,30 @@ export class ComandaService {
           .execute();
       }
 
+      // 8.2. CORRECCIÓN: Si los flags están en true y hay prepagos asignados, marcarlos como UTILIZADO
+      // Esto maneja el caso donde el prepago ya estaba asignado y solo cambió el flag
+      if (comanda.usuarioConsumePrepagoARS === true && comanda.prepagoARSID) {
+        const prepagoARS = await queryRunner.manager.findOne(PrepagoGuardado, {
+          where: { id: comanda.prepagoARSID },
+        });
+        if (prepagoARS && prepagoARS.estado === EstadoPrepago.ACTIVA) {
+          prepagoARS.estado = EstadoPrepago.UTILIZADA;
+          await queryRunner.manager.save(PrepagoGuardado, prepagoARS);
+          this.logger.debug(`Prepago ARS ${comanda.prepagoARSID} marcado como UTILIZADO por flag usuarioConsumePrepagoARS = true`);
+        }
+      }
+
+      if (comanda.usuarioConsumePrepagoUSD === true && comanda.prepagoUSDID) {
+        const prepagoUSD = await queryRunner.manager.findOne(PrepagoGuardado, {
+          where: { id: comanda.prepagoUSDID },
+        });
+        if (prepagoUSD && prepagoUSD.estado === EstadoPrepago.ACTIVA) {
+          prepagoUSD.estado = EstadoPrepago.UTILIZADA;
+          await queryRunner.manager.save(PrepagoGuardado, prepagoUSD);
+          this.logger.debug(`Prepago USD ${comanda.prepagoUSDID} marcado como UTILIZADO por flag usuarioConsumePrepagoUSD = true`);
+        }
+      }
+
       await queryRunner.commitTransaction();
 
       this.logger.log(
@@ -1201,46 +1229,82 @@ export class ComandaService {
     await queryRunner.startTransaction();
 
     try {
+      // Detectar si TODOS los egresos son de CAJA_2
+      const todosEgresosSonCaja2 = crearEgresoDto.egresos?.every(
+        egreso => (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_2
+      ) ?? false;
+
+      // Calcular montos totales para el movimiento (si es CAJA_2)
+      let totalEgresosARS = 0;
+      let totalEgresosUSD = 0;
+
+      if (todosEgresosSonCaja2 && crearEgresoDto.egresos) {
+        crearEgresoDto.egresos.forEach(egreso => {
+          if (egreso.moneda === TipoMoneda.ARS) {
+            totalEgresosARS += egreso.totalPesos;
+          } else if (egreso.moneda === TipoMoneda.USD) {
+            totalEgresosUSD += egreso.totalDolar;
+          }
+        });
+      }
+
       let comanda = new Comanda();
       comanda.numero = crearEgresoDto.numero;
       comanda.tipoDeComanda = TipoDeComanda.EGRESO;
-      comanda.estadoDeComanda =
-        crearEgresoDto.estadoDeComanda ?? EstadoDeComanda.FINALIZADA;
+
+      // Si todos los egresos son de CAJA_2, traspasar automáticamente
+      if (todosEgresosSonCaja2) {
+        comanda.estadoDeComanda = EstadoDeComanda.TRASPASADA;
+        comanda.caja = Caja.CAJA_2;
+      } else {
+        comanda.estadoDeComanda =
+          crearEgresoDto.estadoDeComanda ?? EstadoDeComanda.FINALIZADA;
+        comanda.caja = Caja.CAJA_1;
+      }
+
       comanda.observaciones = crearEgresoDto.observaciones;
-      comanda.caja = Caja.CAJA_1;
       comanda.precioDolar = crearEgresoDto.precioDolar;
       comanda.precioPesos = crearEgresoDto.precioPesos;
       comanda.valorDolar = crearEgresoDto.valorDolar;
       comanda.creadoPor = { id: crearEgresoDto.creadoPorId } as Personal;
 
-      const sumaEgresosDolar = crearEgresoDto.egresos?.reduce((acc, egreso) => {
-        return acc + egreso.totalDolar;
-      }, 0);
+      // Sumar solo egresos de CAJA_1 para validación
+      const sumaEgresosDolarCaja1 = crearEgresoDto.egresos
+        ?.filter(egreso => (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_1)
+        .reduce((acc, egreso) => {
+          return acc + egreso.totalDolar;
+        }, 0) ?? 0;
 
-      const sumaEgresosPesos = crearEgresoDto.egresos?.reduce((acc, egreso) => {
-        return acc + egreso.totalPesos;
-      }, 0);
+      const sumaEgresosPesosCaja1 = crearEgresoDto.egresos
+        ?.filter(egreso => (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_1)
+        .reduce((acc, egreso) => {
+          return acc + egreso.totalPesos;
+        }, 0) ?? 0;
 
-      const netoCajaChica = await this.obtenerMaximoArsUsdEgreso();
-      if (
-        sumaEgresosDolar! > netoCajaChica.usd &&
-        crearEgresoDto.egresos?.some(
-          (egreso) => egreso.moneda === TipoMoneda.USD,
-        )
-      ) {
-        throw new BadRequestException(
-          'La caja 1 no tiene suficientes dolares para realizar el egreso',
-        );
-      }
-      if (
-        sumaEgresosPesos! > netoCajaChica.ars &&
-        crearEgresoDto.egresos?.some(
-          (egreso) => egreso.moneda === TipoMoneda.ARS,
-        )
-      ) {
-        throw new BadRequestException(
-          'La caja 1 no tiene suficientes pesos para realizar el egreso',
-        );
+      // Solo validar si hay egresos de CAJA_1
+      if (crearEgresoDto.egresos?.some(egreso => (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_1)) {
+        const netoCajaChica = await this.obtenerMaximoArsUsdEgreso();
+
+        if (
+          sumaEgresosDolarCaja1 > netoCajaChica.usd &&
+          crearEgresoDto.egresos?.some(
+            (egreso) => egreso.moneda === TipoMoneda.USD && (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_1,
+          )
+        ) {
+          throw new BadRequestException(
+            'La caja 1 no tiene suficientes dolares para realizar el egreso',
+          );
+        }
+        if (
+          sumaEgresosPesosCaja1 > netoCajaChica.ars &&
+          crearEgresoDto.egresos?.some(
+            (egreso) => egreso.moneda === TipoMoneda.ARS && (egreso.caja ?? Caja.CAJA_1) === Caja.CAJA_1,
+          )
+        ) {
+          throw new BadRequestException(
+            'La caja 1 no tiene suficientes pesos para realizar el egreso',
+          );
+        }
       }
 
       const egresos = crearEgresoDto.egresos?.map((egreso) => {
@@ -1250,9 +1314,25 @@ export class ComandaService {
         egresoEntity.totalPesos = egreso.totalPesos;
         egresoEntity.valorDolar = egreso.valorDolar;
         egresoEntity.moneda = egreso.moneda;
+        egresoEntity.caja = egreso.caja ?? Caja.CAJA_1; // Usar caja del DTO o CAJA_1 por defecto
         return queryRunner.manager.create(Egreso, egresoEntity);
       });
       comanda.egresos = await Promise.all(egresos ?? []);
+
+      // Si todos los egresos son de CAJA_2, crear un movimiento automáticamente
+      if (todosEgresosSonCaja2) {
+        const movimiento = await queryRunner.manager.save(Movimiento, {
+          montoARS: totalEgresosARS,
+          montoUSD: totalEgresosUSD,
+          residualARS: 0,
+          residualUSD: 0,
+          comentario: `Egreso generado desde CAJA_1 - ${comanda.numero}`,
+          esIngreso: false, // Es un egreso
+          personal: { id: crearEgresoDto.creadoPorId } as Personal,
+        });
+
+        comanda.movimiento = movimiento;
+      }
 
       const comandaGuardada = await queryRunner.manager.save(Comanda, comanda);
 
@@ -1262,6 +1342,177 @@ export class ComandaService {
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw new BadRequestException(error.message);
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async actualizarEgreso(
+    egresoId: string,
+    actualizarEgresoDto: ActualizarEgresoDto,
+  ): Promise<Egreso> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      // Buscar el egreso con su comanda y movimiento
+      const egreso = await this.egresoRepository.findOne({
+        where: { id: egresoId },
+        relations: ['comanda', 'comanda.movimiento'],
+      });
+
+      if (!egreso) {
+        throw new NotFoundException(`Egreso con ID ${egresoId} no encontrado`);
+      }
+
+      // Validar según la caja
+      if (egreso.caja === Caja.CAJA_1) {
+        // CAJA_1: Solo permitir si la comanda NO está traspasada
+        if (egreso.comanda.estadoDeComanda === EstadoDeComanda.TRASPASADA) {
+          throw new BadRequestException(
+            'No se puede editar un egreso de CAJA_1 que ya está traspasado. ' +
+            'Los egresos de CAJA_1 solo pueden editarse antes del traspaso.',
+          );
+        }
+      }
+      // CAJA_2: Permitir editar incluso si está traspasada (se traspasan automáticamente)
+
+      // Calcular diferencias para validación de CAJA_1
+      const montoAnteriorARS = egreso.moneda === TipoMoneda.ARS ? Number(egreso.totalPesos) : 0;
+      const montoAnteriorUSD = egreso.moneda === TipoMoneda.USD ? Number(egreso.totalDolar) : 0;
+
+      // Actualizar campos del egreso
+      if (actualizarEgresoDto.total !== undefined) {
+        egreso.total = actualizarEgresoDto.total;
+      }
+      if (actualizarEgresoDto.totalDolar !== undefined) {
+        egreso.totalDolar = actualizarEgresoDto.totalDolar;
+      }
+      if (actualizarEgresoDto.totalPesos !== undefined) {
+        egreso.totalPesos = actualizarEgresoDto.totalPesos;
+      }
+      if (actualizarEgresoDto.valorDolar !== undefined) {
+        egreso.valorDolar = actualizarEgresoDto.valorDolar;
+      }
+      if (actualizarEgresoDto.moneda !== undefined) {
+        egreso.moneda = actualizarEgresoDto.moneda;
+      }
+
+      // No permitir cambiar de CAJA_2 a CAJA_1 si está traspasada
+      if (actualizarEgresoDto.caja !== undefined) {
+        if (
+          egreso.caja === Caja.CAJA_2 &&
+          egreso.comanda.estadoDeComanda === EstadoDeComanda.TRASPASADA &&
+          actualizarEgresoDto.caja === Caja.CAJA_1
+        ) {
+          throw new BadRequestException(
+            'No se puede cambiar un egreso de CAJA_2 a CAJA_1 si la comanda ya está traspasada.',
+          );
+        }
+        egreso.caja = actualizarEgresoDto.caja;
+      }
+
+      // Validar fondos disponibles para CAJA_1
+      if (egreso.caja === Caja.CAJA_1) {
+        const netoCajaChica = await this.obtenerMaximoArsUsdEgreso();
+
+        // Calcular el impacto neto del cambio (monto nuevo + monto anterior que se libera)
+        const montoNuevoARS = egreso.moneda === TipoMoneda.ARS ? Number(egreso.totalPesos) : 0;
+        const montoNuevoUSD = egreso.moneda === TipoMoneda.USD ? Number(egreso.totalDolar) : 0;
+
+        const impactoNetoARS = montoNuevoARS - montoAnteriorARS;
+        const impactoNetoUSD = montoNuevoUSD - montoAnteriorUSD;
+
+        // Solo validar si el impacto es positivo (se aumenta el egreso)
+        if (impactoNetoUSD > 0 && impactoNetoUSD > netoCajaChica.usd) {
+          throw new BadRequestException(
+            `La caja 1 no tiene suficientes dólares. Disponible: $${netoCajaChica.usd.toFixed(2)}, Requiere: $${impactoNetoUSD.toFixed(2)} adicionales`,
+          );
+        }
+        if (impactoNetoARS > 0 && impactoNetoARS > netoCajaChica.ars) {
+          throw new BadRequestException(
+            `La caja 1 no tiene suficientes pesos. Disponible: $${netoCajaChica.ars.toFixed(2)}, Requiere: $${impactoNetoARS.toFixed(2)} adicionales`,
+          );
+        }
+      }
+
+      // Guardar el egreso actualizado
+      const egresoActualizado = await queryRunner.manager.save(Egreso, egreso);
+
+      // Si es CAJA_2 y está traspasada, actualizar el movimiento asociado
+      if (
+        egreso.caja === Caja.CAJA_2 &&
+        egreso.comanda.estadoDeComanda === EstadoDeComanda.TRASPASADA &&
+        egreso.comanda.movimiento
+      ) {
+        // Obtener todos los egresos de la comanda para recalcular el total
+        // Usar queryRunner.manager para obtener los valores actualizados dentro de la transacción
+        const todosLosEgresos = await queryRunner.manager.find(Egreso, {
+          where: { comanda: { id: egreso.comanda.id } },
+        });
+
+        let totalARS = 0;
+        let totalUSD = 0;
+
+        todosLosEgresos.forEach((e) => {
+          if (e.moneda === TipoMoneda.ARS) {
+            totalARS += Number(e.totalPesos);
+          } else if (e.moneda === TipoMoneda.USD) {
+            totalUSD += Number(e.totalDolar);
+          }
+        });
+
+        // Actualizar la comanda con los nuevos totales
+        await queryRunner.manager.update(
+          Comanda,
+          { id: egreso.comanda.id },
+          {
+            precioDolar: totalUSD,
+            precioPesos: totalARS,
+          },
+        );
+
+        // Actualizar el movimiento
+        await queryRunner.manager.update(
+          Movimiento,
+          { id: egreso.comanda.movimiento.id },
+          {
+            montoARS: totalARS,
+            montoUSD: totalUSD,
+          },
+        );
+
+        this.logger.log(
+          `Comanda ${egreso.comanda.id} actualizada: ARS=${totalARS}, USD=${totalUSD}`,
+        );
+        this.logger.log(
+          `Movimiento ${egreso.comanda.movimiento.id} actualizado: ARS=${totalARS}, USD=${totalUSD}`,
+        );
+      }
+
+      await queryRunner.commitTransaction();
+
+      this.logger.log(`Egreso ${egresoId} actualizado exitosamente`);
+
+      // Retornar el egreso con sus relaciones
+      const egresoFinal = await this.egresoRepository.findOne({
+        where: { id: egresoId },
+        relations: ['comanda', 'comanda.movimiento', 'comanda.creadoPor'],
+      });
+
+      if (!egresoFinal) {
+        throw new NotFoundException(`Egreso con ID ${egresoId} no encontrado después de actualizar`);
+      }
+
+      return egresoFinal;
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        `Error actualizando egreso: ${error.message}`,
+        error.stack,
+      );
+      throw error;
     } finally {
       await queryRunner.release();
     }
@@ -1368,16 +1619,16 @@ export class ComandaService {
   }
 
   async getLastComandaEgreso(): Promise<Comanda | null> {
-    return await this.comandaRepository.findOne({
-      where: {
-        caja: Caja.CAJA_1,
-        tipoDeComanda: TipoDeComanda.EGRESO,
-      },
-      order: { createdAt: 'DESC' },
-      select: {
-        numero: true,
-      },
-    });
+    const lastComanda = await this.comandaRepository
+      .createQueryBuilder('c')
+      .select(['c.numero'])
+      .where('c.tipoDeComanda = :tipo', { tipo: TipoDeComanda.EGRESO })
+      .orderBy("CAST(SPLIT_PART(c.numero, '-', 2) AS INTEGER)", 'DESC')
+      .addOrderBy("CAST(SPLIT_PART(c.numero, '-', 1) AS INTEGER)", 'DESC')
+      .limit(1)
+      .getOne();
+
+    return lastComanda;
   }
 
   async getResumenCajaChica(filtros: {
@@ -1395,6 +1646,54 @@ export class ComandaService {
     totalEgresosUSD: number;
     totalEgresosARS: number;
     comandasValidadasIds: string[];
+    arsEfectivo: number;
+    usdEfectivo: number;
+    desglose?: {
+      comandas: Array<{
+        id: string;
+        numero: string;
+        estado: string;
+        tipo: string;
+        precioPesos: number;
+        precioDolar: number;
+        prepagoARSId: string | null;
+        prepagoARSMonto: number;
+        prepagoUSDId: string | null;
+        prepagoUSDMonto: number;
+        totalARS: number;
+        totalUSD: number;
+        egresos: Array<{
+          id: string;
+          moneda: string;
+          monto: number;
+        }>;
+      }>;
+      prepagosGuardados: Array<{
+        id: string;
+        moneda: string;
+        monto: number;
+        montoTraspasado: number;
+        disponible: number;
+        estado: string;
+        clienteNombre?: string;
+      }>;
+      egresos: Array<{
+        id: string;
+        comandaId: string;
+        comandaNumero: string;
+        moneda: string;
+        monto: number;
+        descripcion?: string;
+      }>;
+      residualAnterior: {
+        ARS: number;
+        USD: number;
+      };
+      totalesPrepagos: {
+        ARS: number;
+        USD: number;
+      };
+    };
   }> {
     let comandas: Comanda[] = [];
     let prepagosGuardados: PrepagoGuardado[] = [];
@@ -1426,12 +1725,13 @@ export class ComandaService {
       });
       prepagosGuardados = await this.prepagoGuardadoRepository.find({
         where: {
-          estado: In([EstadoPrepago.ACTIVA]),
+          estado: In([EstadoPrepago.ACTIVA, EstadoPrepago.UTILIZADA]),
           fechaCreacion: Raw((a) => `${a} >= :from AND ${a} < :to`, {
             from: fechaDesde,
             to: fechaHasta,
           }),
         },
+        relations: ['cliente'],
       });
       ultimoMovimiento = await this.movimientoRepository.findOne({
         where: {
@@ -1464,9 +1764,13 @@ export class ComandaService {
         where: {
           estado: In([EstadoPrepago.ACTIVA]),
         },
+        relations: ['cliente'],
       });
       ultimoMovimiento = await this.ultimoMovimiento(true);
     }
+
+    let arsEfectivo = 0;
+    let usdEfectivo = 0;
 
     comandasValidadasIds = comandas.reduce<string[]>((acc, c) => {
       if (c.estadoDeComanda === EstadoDeComanda.VALIDADO) {
@@ -1474,19 +1778,6 @@ export class ComandaService {
       }
       return acc;
     }, []);
-
-    // console.log(comandas.length, 'comandas');
-    // console.log(
-    //   prepagosGuardados.filter((pg) => pg.estado === EstadoPrepago.ACTIVA)
-    //     .length,
-    //   'prepagosGuardados activos',
-    //   prepagosGuardados.filter((pg) => pg.estado === EstadoPrepago.ACTIVA),
-    // );
-    // console.log(
-    //   prepagosGuardados.filter((pg) => pg.estado === EstadoPrepago.UTILIZADA)
-    //     .length,
-    //   'prepagosGuardados utilizados',
-    // );
 
     const helperComandas = comandas.reduce(
       (acc, comanda) => {
@@ -1517,31 +1808,39 @@ export class ComandaService {
           comanda.tipoDeComanda === TipoDeComanda.INGRESO &&
           comanda.estadoDeComanda === EstadoDeComanda.VALIDADO
         ) {
-          const totalIngresosARS = Number(comanda.precioPesos) + Number(comanda.prepagoARS?.monto ?? 0);
-          const totalIngresosUSD = Number(comanda.precioDolar) + Number(comanda.prepagoUSD?.monto ?? 0);
-          // this.logger.fatal(totalIngresosARS, 'totalIngresosARS2');
-          // this.logger.fatal(totalIngresosUSD, 'totalIngresosUSD2');
+          const metodoPagoComanda = comanda.metodosPago && comanda.metodosPago.length > 0
+            ? comanda.metodosPago
+            : comanda.items?.flatMap((item) => item.metodosPago ?? []) ?? [];
+          
+          const totalIngresosARS = Number(metodoPagoComanda.reduce((accMP, mp) => {
+            if (mp.moneda === TipoMoneda.ARS) {
+              if (mp.tipo === TipoPago.EFECTIVO) {
+                arsEfectivo += (mp.montoFinal ?? 0);
+              }
+              return accMP + (mp.montoFinal ?? 0);
+            }
+            return accMP;
+          }, 0));
+          // this.logger.fatal(totalIngresosARS, 'totalIngresosARS1');
+          // this.logger.fatal(acc.totalIngresosARS, 'totalIngresosARS2');
+          const totalIngresosUSD = Number(metodoPagoComanda.reduce((accMP, mp) => {
+            if (mp.moneda === TipoMoneda.USD) {
+              if (mp.tipo === TipoPago.EFECTIVO) {
+                usdEfectivo += (mp.montoFinal ?? 0);
+              }
+              return accMP + (mp.montoFinal ?? 0);
+            }
+            return accMP;
+          }, 0));
+
           acc.totalIngresosARS +=
-            totalIngresosARS 
-            // this.logger.fatal(acc.totalIngresosARS, 'totalIngresosARS3');
+            totalIngresosARS
+          // this.logger.fatal(acc.totalIngresosARS, 'totalIngresosARS3');
           acc.totalIngresosUSD +=
-            totalIngresosUSD 
+            totalIngresosUSD
           acc.montoNetoARS += acc.totalIngresosARS - acc.totalEgresosARS;
           acc.montoNetoUSD += acc.totalIngresosUSD - acc.totalEgresosUSD;
         }
-
-        /* ---------- Acumulados ---------- */
-
-        // if (
-        //   comanda.estadoDeComanda === EstadoDeComanda.VALIDADO &&
-        //   comanda.tipoDeComanda === TipoDeComanda.INGRESO
-        // ) {
-        //   acc.montoNetoARSValidado += Number(comanda.precioPesos) + (Number(comanda.prepagoARS?.monto) ?? 0);
-        //   acc.montoNetoUSDValidado += Number(comanda.precioDolar) + (Number(comanda.prepagoUSD?.monto) ?? 0);
-        // }
-
-        // acc.totalTransaccionesARS += Number(comanda.precioPesos) + (Number(comanda.prepagoARS?.monto) ?? 0);
-        // acc.totalTransaccionesUSD += Number(comanda.precioDolar) + (Number(comanda.prepagoUSD?.monto) ?? 0);
 
         return acc;
       },
@@ -1560,7 +1859,9 @@ export class ComandaService {
         totalTransaccionesUSD: 0,
       },
     );
-    
+
+    console.log('DEBUG - arsEfectivo', arsEfectivo);
+    console.log('DEBUG - usdEfectivo', usdEfectivo);
 
     let noComandasValues: {
       montoSeñasARS: number;
@@ -1586,56 +1887,166 @@ export class ComandaService {
             0,
           ),
       };
-      console.table({
-        montoSeñasARS: noComandasValues.montoSeñasARS,
-        montoSeñasUSD: noComandasValues.montoSeñasUSD,
-      });
     }
+
+
+    // console.log('DEBUG - prepagosArs', prepagosGuardados.filter((pg) => pg.moneda === TipoMoneda.ARS).map(pg => {
+    //   if (Number(pg.monto) - Number(pg.montoTraspasado ?? 0) > 0) {
+    //     return {
+    //       id: pg.id,
+    //       monto: pg.monto,
+    //       fechaCreacion: pg.fechaCreacion,
+    //       montoTraspasado: pg.montoTraspasado,
+    //       disponible: Number(pg.monto) - Number(pg.montoTraspasado ?? 0)
+    //     };
+    //   }
+    // }));
+
+    console.log('DEBUG - prepagosUsd', prepagosGuardados.filter((pg) => pg.moneda === TipoMoneda.USD).map(pg => {
+      if (Number(pg.monto) - Number(pg.montoTraspasado ?? 0) > 0) {
+        return {
+          id: pg.id,
+          monto: pg.monto,
+          fechaCreacion: pg.fechaCreacion,
+          montoTraspasado: pg.montoTraspasado,
+          disponible: Number(pg.monto) - Number(pg.montoTraspasado ?? 0)
+        };
+      }
+    }));
 
     const totalPrepagosARS = prepagosGuardados
       .filter((pg) => pg.moneda === TipoMoneda.ARS)
       .reduce(
-        (acc, pg) =>
-          acc + (Number(pg.monto) - Number(pg.montoTraspasado ?? 0)),
-        0,
+        (acc, pg) => {
+          if (pg.tipoPago === TipoPago.EFECTIVO) {
+            arsEfectivo += (Number(pg.monto)) - (Number(pg.montoTraspasado) ?? 0);
+          }
+          return acc + (Number(pg.monto) - Number(pg.montoTraspasado));
+        }, 0
       );
     const totalPrepagosUSD = prepagosGuardados
       .filter((pg) => pg.moneda === TipoMoneda.USD)
       .reduce(
-        (acc, pg) =>
-          acc + (Number(pg.monto) - Number(pg.montoTraspasado ?? 0)),
+        (acc, pg) => {
+          if (pg.tipoPago === TipoPago.EFECTIVO) {
+            usdEfectivo += (Number(pg.monto)) - (Number(pg.montoTraspasado) ?? 0);
+          }
+          return acc + (Number(pg.monto) - Number(pg.montoTraspasado));
+        },
         0,
       );
 
-    console.table({
-      totalIngresosARS: helperComandas.totalIngresosARS + totalPrepagosARS,
-      totalIngresosUSD: helperComandas.totalIngresosUSD + totalPrepagosUSD,
-      totalEgresosARS: helperComandas.totalEgresosARS,
-      totalEgresosUSD: helperComandas.totalEgresosUSD,
-      montoNetoARS: helperComandas.montoNetoARS,
-      montoNetoUSD: helperComandas.montoNetoUSD,
-      prepagosARS: totalPrepagosARS,
-      prepagosUSD: totalPrepagosUSD,
-      prepagosTraspasadosARS: prepagosGuardados
-        .filter((pg) => pg.moneda === TipoMoneda.ARS)
-        .reduce((acc, pg) => acc + Number(pg.montoTraspasado ?? 0), 0),
-      prepagosTraspasadosUSD: prepagosGuardados
-        .filter((pg) => pg.moneda === TipoMoneda.USD)
-        .reduce((acc, pg) => acc + Number(pg.montoTraspasado ?? 0), 0),
-      prepagosNoTraspasadosARS: prepagosGuardados
-        .filter((pg) => pg.moneda === TipoMoneda.ARS)
-        .reduce(
-          (acc, pg) =>
-            acc + Number(pg.monto) - Number(pg.montoTraspasado ?? 0),
-          0,
-        ),
-      prepagosNoTraspasadosUSD: prepagosGuardados
-        .filter((pg) => pg.moneda === TipoMoneda.USD)
-        .reduce(
-          (acc, pg) =>
-            acc + Number(pg.monto) - Number(pg.montoTraspasado ?? 0),
-          0,
-        ),
+    // console.table({
+    //   totalIngresosARS: helperComandas.totalIngresosARS + totalPrepagosARS,
+    //   totalIngresosUSD: helperComandas.totalIngresosUSD + totalPrepagosUSD,
+    //   totalEgresosARS: helperComandas.totalEgresosARS,
+    //   totalEgresosUSD: helperComandas.totalEgresosUSD,
+    //   montoNetoARS: helperComandas.montoNetoARS,
+    //   montoNetoUSD: helperComandas.montoNetoUSD,
+    //   prepagosARS: totalPrepagosARS,
+    //   prepagosUSD: totalPrepagosUSD,
+    //   prepagosTraspasadosARS: prepagosGuardados
+    //     .filter((pg) => pg.moneda === TipoMoneda.ARS)
+    //     .reduce((acc, pg) => acc + Number(pg.montoTraspasado ?? 0), 0),
+    //   prepagosTraspasadosUSD: prepagosGuardados
+    //     .filter((pg) => pg.moneda === TipoMoneda.USD)
+    //     .reduce((acc, pg) => acc + Number(pg.montoTraspasado ?? 0), 0),
+    //   prepagosNoTraspasadosARS: prepagosGuardados
+    //     .filter((pg) => pg.moneda === TipoMoneda.ARS)
+    //     .reduce(
+    //       (acc, pg) =>
+    //         acc + Number(pg.monto) - Number(pg.montoTraspasado ?? 0),
+    //       0,
+    //     ),
+    //   prepagosNoTraspasadosUSD: prepagosGuardados
+    //     .filter((pg) => pg.moneda === TipoMoneda.USD)
+    //     .reduce(
+    //       (acc, pg) =>
+    //         acc + Number(pg.monto) - Number(pg.montoTraspasado ?? 0),
+    //       0,
+    //     ),
+    // });
+    // console.table({
+    //   prepagosGuardados: prepagosGuardados.length,
+    //   ultimoMovimientoResidualARS: ultimoMovimiento.residualARS,
+    //   ultimoMovimientoResidualUSD: ultimoMovimiento.residualUSD,
+    // });
+    // Construir desglose detallado
+    const desgloseComandas = comandas
+      .filter((comanda) =>
+        comanda.tipoDeComanda === TipoDeComanda.INGRESO &&
+        comanda.estadoDeComanda === EstadoDeComanda.VALIDADO
+      )
+      .map((comanda) => {
+        const prepagoARSMonto = Number(comanda.prepagoARS?.monto ?? 0);
+        const prepagoUSDMonto = Number(comanda.prepagoUSD?.monto ?? 0);
+        const precioPesos = Number(comanda.precioPesos ?? 0);
+        const precioDolar = Number(comanda.precioDolar ?? 0);
+
+        // Mapear egresos de esta comanda (solo de caja 1)
+        const egresosComanda = (comanda.egresos ?? [])
+          .filter((egreso) => egreso.caja === Caja.CAJA_1)
+          .map((egreso) => ({
+            id: egreso.id,
+            moneda: egreso.moneda,
+            monto: egreso.moneda === TipoMoneda.ARS
+              ? Number(egreso.totalPesos ?? 0)
+              : Number(egreso.totalDolar ?? 0),
+          }));
+
+        return {
+          id: comanda.id,
+          numero: comanda.numero,
+          estado: comanda.estadoDeComanda,
+          tipo: comanda.tipoDeComanda,
+          precioPesos,
+          precioDolar,
+          prepagoARSId: comanda.prepagoARS?.id ?? null,
+          prepagoARSMonto,
+          prepagoUSDId: comanda.prepagoUSD?.id ?? null,
+          prepagoUSDMonto,
+          totalARS: precioPesos + prepagoARSMonto,
+          totalUSD: precioDolar + prepagoUSDMonto,
+          egresos: egresosComanda,
+        };
+      });
+    const desglosePrepagsGuardados = prepagosGuardados
+      .filter((prepago) => {
+        const disponible = Number(prepago.monto) - (prepago.montoTraspasado ? Number(prepago.montoTraspasado) : 0);
+        return disponible > 0;
+      })
+      .map((prepago) => ({
+        id: prepago.id,
+        moneda: prepago.moneda,
+        monto: Number(prepago.monto ?? 0),
+        montoTraspasado: Number(prepago.montoTraspasado ?? 0),
+        disponible: Number(prepago.monto ?? 0) - Number(prepago.montoTraspasado ?? 0),
+        estado: prepago.estado,
+        clienteNombre: prepago.cliente?.nombre ?? 'Sin cliente',
+      }));
+
+    const desgloseEgresos: Array<{
+      id: string;
+      comandaId: string;
+      comandaNumero: string;
+      moneda: string;
+      monto: number;
+    }> = [];
+
+    comandas.forEach((comanda) => {
+      (comanda.egresos ?? [])
+        .filter((egreso) => egreso.caja === Caja.CAJA_1)
+        .forEach((egreso) => {
+          desgloseEgresos.push({
+            id: egreso.id,
+            comandaId: comanda.id,
+            comandaNumero: comanda.numero,
+            moneda: egreso.moneda,
+            monto: egreso.moneda === TipoMoneda.ARS
+              ? Number(egreso.totalPesos ?? 0)
+              : Number(egreso.totalDolar ?? 0),
+          });
+        });
     });
 
     return {
@@ -1647,7 +2058,7 @@ export class ComandaService {
         noComandasValues.montoSeñasUSD -
         helperComandas.totalEgresosUSD,
       montoNetoARS:
-      helperComandas.totalIngresosARS + totalPrepagosARS +
+        helperComandas.totalIngresosARS + totalPrepagosARS +
         Number(ultimoMovimiento?.residualARS ?? 0) +
         noComandasValues.montoSeñasARS -
         helperComandas.totalEgresosARS,
@@ -1663,15 +2074,29 @@ export class ComandaService {
         helperComandas.totalEgresosARS,
       totalIngresosUSD:
         helperComandas.totalIngresosUSD + totalPrepagosUSD +
-        Number(ultimoMovimiento?.residualUSD ?? 0) +
-        noComandasValues.montoSeñasUSD,
+        Number(ultimoMovimiento?.residualUSD ?? 0),
       totalIngresosARS:
-        helperComandas.totalIngresosARS + totalPrepagosARS +
-        Number(ultimoMovimiento?.residualARS ?? 0) +
-        noComandasValues.montoSeñasARS,
+        helperComandas.totalIngresosARS + totalPrepagosARS + 
+        Number(ultimoMovimiento?.residualARS ?? 0) 
+        ,
       totalEgresosUSD: helperComandas.totalEgresosUSD,
       totalEgresosARS: helperComandas.totalEgresosARS,
       comandasValidadasIds,
+      arsEfectivo: arsEfectivo + Number(ultimoMovimiento?.residualARS ?? 0) - helperComandas.totalEgresosARS,
+      usdEfectivo: usdEfectivo + Number(ultimoMovimiento?.residualUSD ?? 0) - helperComandas.totalEgresosUSD,
+      desglose: {
+        comandas: desgloseComandas,
+        prepagosGuardados: desglosePrepagsGuardados,
+        egresos: desgloseEgresos,
+        residualAnterior: {
+          ARS: Number(ultimoMovimiento?.residualARS ?? 0),
+          USD: Number(ultimoMovimiento?.residualUSD ?? 0),
+        },
+        totalesPrepagos: {
+          ARS: totalPrepagosARS,
+          USD: totalPrepagosUSD,
+        },
+      },
     };
   }
 
@@ -1687,6 +2112,10 @@ export class ComandaService {
     montoDisponibleTrasladoARS: number;
     totalIngresosUSD: number;
     totalIngresosARS: number;
+    ingresosComandasARS: number;
+    ingresosComandasUSD: number;
+    ingresosPrepagosARS: number;
+    ingresosPrepagosUSD: number;
     totalEgresosUSD: number;
     totalEgresosARS: number;
     comandasValidadasIds: string[];
@@ -1712,29 +2141,22 @@ export class ComandaService {
   }> {
     // Use today's date if not provided
     const hoy = DateTime.now().setZone('America/Argentina/Buenos_Aires');
-  
+
     // Parse the provided dates or use today
     const fechaDesdeSeleccionada = filtros.fechaDesde
       ? DateTime.fromISO(filtros.fechaDesde, { zone: 'America/Argentina/Buenos_Aires' })
       : hoy;
-    
+
     const fechaHastaSeleccionada = filtros.fechaHasta
       ? DateTime.fromISO(filtros.fechaHasta, { zone: 'America/Argentina/Buenos_Aires' })
       : fechaDesdeSeleccionada;
-  
+
     // Get start and end of the selected date range
     const fechaDesde = fechaDesdeSeleccionada.startOf('day').toJSDate();
     const fechaHasta = fechaHastaSeleccionada.endOf('day').toJSDate();
-  
-    console.log('DEBUG - Fecha desde solicitada:', filtros.fechaDesde);
-    console.log('DEBUG - Fecha hasta solicitada:', filtros.fechaHasta);
-    console.log('DEBUG - Fecha desde seleccionada:', fechaDesdeSeleccionada.toISO());
-    console.log('DEBUG - Fecha hasta seleccionada:', fechaHastaSeleccionada.toISO());
-    console.log('DEBUG - Fecha desde (Date):', fechaDesde);
-    console.log('DEBUG - Fecha hasta (Date):', fechaHasta);
-  
+
     let comandasValidadasIds: string[] = [];
-  
+
     const comandas = await this.comandaRepository.find({
       where: {
         estadoDeComanda: In([
@@ -1742,7 +2164,6 @@ export class ComandaService {
           EstadoDeComanda.PENDIENTE,
           EstadoDeComanda.TRASPASADA,
         ]),
-        caja: Caja.CAJA_1,
         createdAt: Raw((a) => `${a} >= :from AND ${a} < :to`, {
           from: fechaDesde,
           to: fechaHasta,
@@ -1750,7 +2171,7 @@ export class ComandaService {
       },
       relations: ['egresos', 'prepagoARS', 'prepagoUSD', 'items', 'items.metodosPago', 'items.productoServicio', 'items.productoServicio.unidadNegocio', 'metodosPago'],
     });
-  
+
     const prepagosGuardados = await this.prepagoGuardadoRepository.find({
       where: {
         estado: In([EstadoPrepago.ACTIVA, EstadoPrepago.UTILIZADA]),
@@ -1760,18 +2181,16 @@ export class ComandaService {
         }),
       },
     });
-  
-    console.log('DEBUG - Comandas encontradas:', comandas.length);
-    console.log('DEBUG - Prepagos guardados encontrados:', prepagosGuardados.length);
-    console.log('DEBUG - Prepagos guardados:', prepagosGuardados);
-  
+
+
+
     comandasValidadasIds = comandas.reduce<string[]>((acc, c) => {
       if (c.estadoDeComanda === EstadoDeComanda.VALIDADO) {
         acc.push(c.id);
       }
       return acc;
     }, []);
-  
+
     // Initialize payment method breakdown for ingresos
     const porMetodoPago: {
       [key in TipoPago]: {
@@ -1787,7 +2206,7 @@ export class ComandaService {
       [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
       [TipoPago.MERCADO_PAGO]: { ARS: 0, USD: 0 },
     };
-  
+
     // Initialize payment method breakdown for egresos
     const porMetodoPagoEgresos: {
       [key in TipoPago]: {
@@ -1803,7 +2222,7 @@ export class ComandaService {
       [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
       [TipoPago.MERCADO_PAGO]: { ARS: 0, USD: 0 },
     };
-  
+
     // Initialize breakdown by business unit
     const porUnidadNegocio: {
       [unidadNegocioId: string]: {
@@ -1812,20 +2231,20 @@ export class ComandaService {
         totalUSD: number;
       };
     } = {};
-  
+
     // Guardar comandas en archivo JSON para debugging
     // if (comandas.length > 0) {
     //   try {
     //     const timestamp = DateTime.now().toFormat('yyyy-MM-dd_HH-mm-ss');
     //     const fileName = `comandas-debug-${timestamp}.json`;
     //     const filePath = join(process.cwd(), fileName);
-        
+
     //     writeFileSync(
     //       filePath,
     //       JSON.stringify(comandas, null, 2),
     //       'utf-8'
     //     );
-        
+
     //     this.logger.log(`Comandas guardadas en: ${fileName}`);
     //   } catch (error) {
     //     this.logger.error('Error al guardar archivo JSON de comandas:', error);
@@ -1838,25 +2257,27 @@ export class ComandaService {
         /* ---------- Egresos ---------- */
         let totalEgresosARS = 0;
         let totalEgresosUSD = 0;
-  
+
         (comanda.egresos ?? []).forEach((egreso) => {
-          if (egreso.moneda === TipoMoneda.ARS) {
-            totalEgresosARS += egreso.totalPesos ?? 0;
-          } else if (egreso.moneda === TipoMoneda.USD) {
-            totalEgresosUSD += egreso.totalDolar ?? 0;
+          if (egreso.caja === Caja.CAJA_1) {
+            if (egreso.moneda === TipoMoneda.ARS) {
+              totalEgresosARS += egreso.totalPesos ?? 0;
+            } else if (egreso.moneda === TipoMoneda.USD) {
+              totalEgresosUSD += egreso.totalDolar ?? 0;
+            }
           }
         });
-  
+
         acc.totalEgresosARS += totalEgresosARS;
         acc.totalEgresosUSD += totalEgresosUSD;
-  
+
         /* ---------- Estado de comanda ---------- */
         if (comanda.estadoDeComanda === EstadoDeComanda.VALIDADO) {
           acc.totalCompletados++;
         } else if (comanda.estadoDeComanda === EstadoDeComanda.PENDIENTE) {
           acc.totalPendientes++;
         }
-  
+
         /* ---------- Ingresos (USD + ARS en un solo recorrido) ---------- */
         if (
           comanda.tipoDeComanda === TipoDeComanda.INGRESO
@@ -1865,32 +2286,28 @@ export class ComandaService {
           // Solo sumamos lo que realmente ingresó en esta comanda
           const totalIngresosARS = Number(comanda.precioPesos);
           const totalIngresosUSD = Number(comanda.precioDolar);
-  
+
           acc.totalIngresosARS += totalIngresosARS;
           acc.totalIngresosUSD += totalIngresosUSD;
-  
+
           /* ---------- Process payment methods by type (INGRESOS) ---------- */
           // Priorizar metodosPago de la comanda si existen, sino usar los de los items
           const metodosPagoParaProcesar = comanda.metodosPago && comanda.metodosPago.length > 0
             ? comanda.metodosPago
             : comanda.items?.flatMap((item) => item.metodosPago ?? []) ?? [];
-  
+
           metodosPagoParaProcesar.forEach((metodoPago) => {
             const montoFinal = Number(metodoPago.montoFinal ?? 0);
             const tipoMoneda = metodoPago.moneda;
             const tipoPago = metodoPago.tipo;
-  
-            console.log('DEBUG - Monto final:', montoFinal, comanda.numero);
-            console.log('DEBUG - Tipo moneda:', tipoMoneda);
-            console.log('DEBUG - Tipo pago:', tipoPago);
-  
+
             if (tipoMoneda === TipoMoneda.ARS) {
               porMetodoPago[tipoPago].ARS += montoFinal;
             } else if (tipoMoneda === TipoMoneda.USD) {
               porMetodoPago[tipoPago].USD += montoFinal;
             }
           });
-  
+
           /* ---------- Process breakdown by business unit (INGRESOS) ---------- */
           // Check if items have payment methods at item level
           const tieneMetodosPagoEnItems = comanda.items?.some(
@@ -1930,7 +2347,7 @@ export class ComandaService {
               // Determine the currency of the comanda based on payment methods
               const todosPagosEnUSD = metodosPagoParaProcesar.every(mp => mp.moneda === TipoMoneda.USD);
               const todosPagosEnARS = metodosPagoParaProcesar.every(mp => mp.moneda === TipoMoneda.ARS);
-              
+
               // Step 1: Calculate subtotal for each item (precio - descuento)
               // Convert USD prices to ARS only when payments are in ARS
               const itemsConSubtotales = comanda.items.map((item) => {
@@ -1938,20 +2355,20 @@ export class ComandaService {
                 let precio = Number(item.precio ?? 0);
                 const cantidad = Number(item.cantidad ?? 1);
                 const descuento = Number(item.descuento ?? 0);
-                
+
                 // Check if price needs to be converted from USD to ARS
                 const esPrecioCongelado = item.productoServicio?.esPrecioCongelado;
                 const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
-                
+
                 // If not frozen price in ARS and all payments are in ARS, convert USD to ARS
                 if (todosPagosEnARS && (!esPrecioCongelado || precioFijoARS === 0)) {
                   const valorDolar = Number(comanda.valorDolar ?? 1);
                   precio = precio * valorDolar;
                 }
                 // If payments are in USD, keep USD prices as is (don't convert)
-                
+
                 const subtotal = (precio * cantidad) - descuento;
-                
+
                 return {
                   item,
                   unidadNegocio,
@@ -1969,14 +2386,14 @@ export class ComandaService {
 
               itemsConSubtotales.forEach((itemData) => {
                 const unidadId = itemData.unidadNegocio.id;
-                
+
                 if (!unidadesPorId.has(unidadId)) {
                   unidadesPorId.set(unidadId, {
                     unidadNegocio: itemData.unidadNegocio,
                     totalItems: 0,
                   });
                 }
-                
+
                 const unidadData = unidadesPorId.get(unidadId)!;
                 unidadData.totalItems += itemData.subtotal;
               });
@@ -1984,10 +2401,10 @@ export class ComandaService {
               // Step 3: Handle prepago (deposit) - subtract from highest value business unit
               // Prepagos are NOT income for today, they were paid on a different day
               let montoPrepagoADescontar = 0;
-              
+
               if (comanda.usuarioConsumePrepagoARS && comanda.prepagoARS) {
                 const montoPrepagoARS = Number(comanda.prepagoARS.monto ?? 0);
-                
+
                 if (todosPagosEnARS) {
                   // Prepago in ARS, payments in ARS - no conversion needed
                   montoPrepagoADescontar = montoPrepagoARS;
@@ -1999,7 +2416,7 @@ export class ComandaService {
               }
               else if (comanda.usuarioConsumePrepagoUSD && comanda.prepagoUSD) {
                 const montoPrepagoUSD = Number(comanda.prepagoUSD.monto ?? 0);
-                
+
                 if (todosPagosEnARS) {
                   // Prepago in USD, payments in ARS - convert USD to ARS
                   const valorDolar = Number(comanda.valorDolar ?? 1);
@@ -2023,15 +2440,15 @@ export class ComandaService {
 
               // Step 5: Calculate totals after subtracting prepago from highest value unit
               const unidadesAjustadas = new Map<string, number>();
-              
+
               unidadesPorId.forEach((data, unidadId) => {
                 let totalAjustado = data.totalItems;
-                
+
                 // Subtract prepago from highest value business unit only
                 if (unidadId === unidadConMayorValor && montoPrepagoADescontar > 0) {
                   totalAjustado = Math.max(0, totalAjustado - montoPrepagoADescontar);
                 }
-                
+
                 unidadesAjustadas.set(unidadId, totalAjustado);
               });
 
@@ -2040,13 +2457,13 @@ export class ComandaService {
 
               // Step 7: Distribute payment methods proportionally based on adjusted totals
               if (totalDespuesPrepago > 0) {
-              metodosPagoParaProcesar.forEach((metodoPago) => {
-                const montoFinal = Number(metodoPago.montoFinal ?? 0);
-                const tipoMoneda = metodoPago.moneda;
+                metodosPagoParaProcesar.forEach((metodoPago) => {
+                  const montoFinal = Number(metodoPago.montoFinal ?? 0);
+                  const tipoMoneda = metodoPago.moneda;
 
                   unidadesAjustadas.forEach((totalAjustado, unidadId) => {
                     const unidadData = unidadesPorId.get(unidadId)!;
-                    
+
                     // Initialize business unit if not exists
                     if (!porUnidadNegocio[unidadId]) {
                       porUnidadNegocio[unidadId] = {
@@ -2060,18 +2477,18 @@ export class ComandaService {
                     const proporcion = totalAjustado / totalDespuesPrepago;
                     const montoParaUnidad = montoFinal * proporcion;
 
-                  if (tipoMoneda === TipoMoneda.ARS) {
+                    if (tipoMoneda === TipoMoneda.ARS) {
                       porUnidadNegocio[unidadId].totalARS += montoParaUnidad;
-                  } else if (tipoMoneda === TipoMoneda.USD) {
+                    } else if (tipoMoneda === TipoMoneda.USD) {
                       porUnidadNegocio[unidadId].totalUSD += montoParaUnidad;
-                  }
+                    }
+                  });
                 });
-              });
               }
             }
           }
         }
-  
+
         /* ---------- Egresos - Process payment methods by type ---------- */
         if (
           comanda.tipoDeComanda === TipoDeComanda.EGRESO
@@ -2080,13 +2497,13 @@ export class ComandaService {
           const metodosPagoEgresosParaProcesar = comanda.metodosPago && comanda.metodosPago.length > 0
             ? comanda.metodosPago
             : comanda.items?.flatMap((item) => item.metodosPago ?? []) ?? [];
-  
+
           metodosPagoEgresosParaProcesar.forEach((metodoPago) => {
             console.table(metodoPago);
             const montoFinal = Number(metodoPago.montoFinal ?? 0);
             const tipoMoneda = metodoPago.moneda;
             const tipoPago = metodoPago.tipo;
-  
+
             if (tipoMoneda === TipoMoneda.ARS) {
               porMetodoPagoEgresos[tipoPago].ARS += montoFinal;
             } else if (tipoMoneda === TipoMoneda.USD) {
@@ -2094,7 +2511,7 @@ export class ComandaService {
             }
           });
         }
-  
+
         return acc;
       },
       {
@@ -2106,7 +2523,7 @@ export class ComandaService {
         totalIngresosUSD: 0,
       },
     );
-  
+
     let noComandasValues: {
       montoSeñasARS: number;
       montoSeñasUSD: number;
@@ -2120,7 +2537,7 @@ export class ComandaService {
           .filter((pg) => pg.moneda === TipoMoneda.ARS)
           .reduce(
             (acc, pg) =>
-              acc + Number(pg.monto) ,
+              acc + Number(pg.monto),
             0,
           ),
         montoSeñasUSD: prepagosGuardados
@@ -2132,22 +2549,22 @@ export class ComandaService {
           ),
       };
     }
-  
+
     // Add prepago guardado amounts to payment method breakdown (para que el desglose incluya prepagos del día)
     prepagosGuardados.forEach((prepago) => {
       const monto = Number(prepago.monto ?? 0);
       const tipoMoneda = prepago.moneda;
       const tipoPago = prepago.tipoPago;
-  
+
       console.log('DEBUG - Prepago guardado:', { tipoPago, tipoMoneda, monto });
-  
+
       if (tipoMoneda === TipoMoneda.ARS) {
         porMetodoPago[tipoPago].ARS += monto;
       } else if (tipoMoneda === TipoMoneda.USD) {
         porMetodoPago[tipoPago].USD += monto;
       }
     });
-  
+
     const totalPrepagosARS = prepagosGuardados
       .filter((pg) => pg.moneda === TipoMoneda.ARS)
       .reduce(
@@ -2162,21 +2579,27 @@ export class ComandaService {
           acc + (Number(pg.monto)),
         0,
       );
-  
+
     // ---------- OPCIÓN A: SIEMPRE sumar prepagos del día a los totales ----------
     const totalIngresosUSD =
       helperComandas.totalIngresosUSD +
       noComandasValues.montoSeñasUSD +
       totalPrepagosUSD;
-  
+
     const totalIngresosARS =
       helperComandas.totalIngresosARS +
       noComandasValues.montoSeñasARS +
       totalPrepagosARS;
-  
+
+    // Desglose separado de ingresos
+    const ingresosComandasARS = helperComandas.totalIngresosARS;
+    const ingresosComandasUSD = helperComandas.totalIngresosUSD;
+    const ingresosPrepagosARS = noComandasValues.montoSeñasARS + totalPrepagosARS;
+    const ingresosPrepagosUSD = noComandasValues.montoSeñasUSD + totalPrepagosUSD;
+
     // console.log('DEBUG - Desglose final por método de pago (INGRESOS):', JSON.stringify(porMetodoPago, null, 2));
     // console.log('DEBUG - Desglose final por método de pago (EGRESOS):', JSON.stringify(porMetodoPagoEgresos, null, 2));
-  
+
     return {
       totalCompletados: helperComandas.totalCompletados,
       totalPendientes: helperComandas.totalPendientes,
@@ -2186,6 +2609,10 @@ export class ComandaService {
       montoDisponibleTrasladoARS: totalIngresosARS,
       totalIngresosUSD,
       totalIngresosARS,
+      ingresosComandasARS,
+      ingresosComandasUSD,
+      ingresosPrepagosARS,
+      ingresosPrepagosUSD,
       totalEgresosUSD: helperComandas.totalEgresosUSD,
       totalEgresosARS: helperComandas.totalEgresosARS,
       comandasValidadasIds,
@@ -2194,7 +2621,7 @@ export class ComandaService {
       porUnidadNegocio,
     };
   }
-  
+
 
   async cambiarEstado(
     id: string,
@@ -2227,6 +2654,12 @@ export class ComandaService {
     if (filtros.estadoDeComanda) {
       queryBuilder.andWhere('comanda.estadoDeComanda = :estadoDeComanda', {
         estadoDeComanda: filtros.estadoDeComanda,
+      });
+    }
+
+    if (filtros.caja) {
+      queryBuilder.andWhere('comanda.caja = :caja', {
+        caja: filtros.caja,
       });
     }
 
@@ -2434,16 +2867,7 @@ export class ComandaService {
     ars: number;
     usd: number;
   }> {
-    let comandas = await this.comandaRepository.find({
-      where: {
-        estadoDeComanda: EstadoDeComanda.VALIDADO,
-        tipoDeComanda: In([TipoDeComanda.INGRESO, TipoDeComanda.EGRESO]),
-        caja: Caja.CAJA_1,
-      },
-      relations: ['prepagoARS', 'prepagoUSD', 'egresos'],
-    });
-
-    const comandasPendientes = await this.comandaRepository.find({
+    const comandas = await this.comandaRepository.find({
       where: [
         {
           estadoDeComanda: EstadoDeComanda.PENDIENTE,
@@ -2462,16 +2886,21 @@ export class ComandaService {
           tipoDeComanda: In([TipoDeComanda.INGRESO, TipoDeComanda.EGRESO]),
           caja: Caja.CAJA_1,
         },
+        {
+        estadoDeComanda: EstadoDeComanda.VALIDADO,
+        tipoDeComanda: In([TipoDeComanda.INGRESO, TipoDeComanda.EGRESO]),
+        caja: Caja.CAJA_1,
+      },
       ],
-      relations: ['prepagoARS', 'prepagoUSD', 'egresos'],
+      relations: ['prepagoARS', 'prepagoUSD', 'egresos', 'metodosPago'],
     });
-    console.log(comandasPendientes.length, 'comandasPendientes');
-    comandas = comandas.concat(comandasPendientes);
-    console.log(comandas.length, 'comandas');
+
+    console.log(`DEBUG - Calculando máximo ARS/USD para egresos. Comandas encontradas: ${comandas.length}`);
 
     const prepagosGuardados = await this.prepagoGuardadoRepository.find({
       where: {
         estado: In([EstadoPrepago.ACTIVA]),
+        tipoPago: TipoPago.EFECTIVO,
       },
     });
     const ultimoMovimiento = await this.ultimoMovimiento(true) ?? {
@@ -2479,18 +2908,48 @@ export class ComandaService {
       residualUSD: 0,
     };
 
-    const totalArs = comandas
-      .filter((c) => c.tipoDeComanda === TipoDeComanda.INGRESO)
-      .reduce((acc, c) => acc + Number(c.precioPesos) + Number(c.prepagoARS?.monto ?? 0), 0);
-    const totalUsd = comandas
-      .filter((c) => c.tipoDeComanda === TipoDeComanda.INGRESO)
-      .reduce((acc, c) => acc + Number(c.precioDolar) + Number(c.prepagoUSD?.monto ?? 0), 0);
-    const totalEgresosARS = comandas
+    const comandasIngresos = comandas.filter((c) => c.tipoDeComanda === TipoDeComanda.INGRESO);
+
+    console.log(`DEBUG - Comandas de INGRESO encontradas: ${comandasIngresos.length}`);
+    let totalArs = 0;
+
+     comandasIngresos.forEach((c) => {
+      const metodoPagoARS = c.metodosPago?.filter((mp) => mp.moneda === TipoMoneda.ARS && mp.tipo === TipoPago.EFECTIVO) || [];
+      const totalMetodoPagoARS = metodoPagoARS.reduce((acc, mp) => acc + Number(mp.montoFinal), 0);
+
+      console.log(`DEBUG - Comanda ${c.numero}: totalMetodoPagoARS=${totalMetodoPagoARS}`);
+
+      totalArs += totalMetodoPagoARS;
+    });
+
+    let totalUsd = 0;
+     comandasIngresos.forEach((c) => {
+      const metodoPagoUSD = c.metodosPago?.filter((mp) => mp.moneda === TipoMoneda.USD && mp.tipo === TipoPago.EFECTIVO) || [];
+      const totalMetodoPagoUSD = metodoPagoUSD.reduce((acc, mp) => acc + Number(mp.montoFinal), 0);
+
+      console.log(`DEBUG - Comanda ${c.numero}: totalMetodoPagoUSD=${totalMetodoPagoUSD}`);
+
+      totalUsd += totalMetodoPagoUSD;
+    });
+
+    // Calcular egresos solo de CAJA_1 (sumar los montos de los egresos individuales)
+    let totalEgresosARS = 0;
+    let totalEgresosUSD = 0;
+
+    comandas
       .filter((c) => c.tipoDeComanda === TipoDeComanda.EGRESO)
-      .reduce((acc, c) => acc + Number(c.precioPesos), 0);
-    const totalEgresosUSD = comandas
-      .filter((c) => c.tipoDeComanda === TipoDeComanda.EGRESO)
-      .reduce((acc, c) => acc + Number(c.precioDolar), 0);
+      .forEach((c) => {
+        (c.egresos || []).forEach((egreso) => {
+          // Solo contar egresos de CAJA_1
+          if (egreso.caja === Caja.CAJA_1) {
+            if (egreso.moneda === TipoMoneda.ARS) {
+              totalEgresosARS += Number(egreso.totalPesos ?? 0);
+            } else if (egreso.moneda === TipoMoneda.USD) {
+              totalEgresosUSD += Number(egreso.totalDolar ?? 0);
+            }
+          }
+        });
+      });
 
     const totalPrepagosARS = prepagosGuardados
       .filter((pg) => pg.moneda === TipoMoneda.ARS)
@@ -2509,11 +2968,11 @@ export class ComandaService {
       totalArs: totalArs,
       totalEgresosARS: totalEgresosARS,
       totalPrepagosARS: totalPrepagosARS,
-      residualARS: ultimoMovimiento?.residualARS ?? 0,
+      residualARS: Number(ultimoMovimiento?.residualARS ?? 0),
       totalUsd: totalUsd,
       totalEgresosUSD: totalEgresosUSD,
       totalPrepagosUSD: totalPrepagosUSD,
-      residualUSD: ultimoMovimiento?.residualUSD ?? 0,
+      residualUSD: Number(ultimoMovimiento?.residualUSD ?? 0),
     });
 
     return {
@@ -2699,15 +3158,18 @@ export class ComandaService {
         const cantidad = Number(item.cantidad ?? 1);
         const descuento = Number(item.descuento ?? 0);
 
-        // Si el precio está en USD, convertir a ARS usando valorDolar
+        // Si el precio está congelado, usar precioFijoARS; de lo contrario, convertir USD a ARS
         const esPrecioCongelado = item.productoServicio?.esPrecioCongelado;
         const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
-        
-        // Si no es precio congelado en ARS, entonces está en USD
-        if (!esPrecioCongelado || precioFijoARS === 0) {
+
+        // Si el precio está congelado, usar el precio fijo en ARS
+        if (esPrecioCongelado && precioFijoARS > 0) {
+          precio = precioFijoARS;
+        } else {
+          // Si no está congelado, el precio está en USD y debe convertirse a ARS
           // Si se proporciona un valorDolar en los filtros, usarlo; de lo contrario, usar el de la comanda
-          const valorDolar = filtros.dolar && filtros.dolar > 0 
-            ? filtros.dolar 
+          const valorDolar = filtros.dolar && filtros.dolar > 0
+            ? filtros.dolar
             : Number(comanda.valorDolar ?? 1);
           precio = precio * valorDolar; // Convertir USD a ARS
         }

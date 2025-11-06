@@ -1,7 +1,7 @@
 import { IsOptional, IsString, IsNumber, Min, Max, IsEnum, IsUUID, IsDateString, IsBoolean } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { TipoDeComanda, EstadoDeComanda } from '../entities/Comanda.entity';
+import { TipoDeComanda, EstadoDeComanda, Caja } from '../entities/Comanda.entity';
 
 export class FiltrarComandasDto {
   @ApiPropertyOptional({
@@ -134,4 +134,13 @@ export class FiltrarComandasDto {
   @IsOptional()
   @IsString()
   order?: 'ASC' | 'DESC' = 'DESC';
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por caja',
+    enum: Caja,
+    example: Caja.CAJA_1,
+  })
+  @IsOptional()
+  @IsEnum(Caja)
+  caja?: Caja;
 } 

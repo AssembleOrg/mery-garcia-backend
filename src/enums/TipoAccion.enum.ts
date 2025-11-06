@@ -82,8 +82,28 @@ export enum TipoAccion {
     UNIDAD_NEGOCIO_ELIMINADA = 'unidad_negocio_eliminada',
     UNIDAD_NEGOCIO_RESTAURADA = 'unidad_negocio_restaurada',
   
+    // Egresos
+    EGRESO_CREADO = 'egreso_creado',
+    EGRESO_MODIFICADO = 'egreso_modificado',
+    EGRESO_ELIMINADO = 'egreso_eliminado',
+    EGRESO_RESTAURADO = 'egreso_restaurado',
+
+    // Métodos de Pago
+    METODO_PAGO_CREADO = 'metodo_pago_creado',
+    METODO_PAGO_MODIFICADO = 'metodo_pago_modificado',
+    METODO_PAGO_ELIMINADO = 'metodo_pago_eliminado',
+    METODO_PAGO_RESTAURADO = 'metodo_pago_restaurado',
+
+    // Descuentos
+    DESCUENTO_CREADO = 'descuento_creado',
+    DESCUENTO_MODIFICADO = 'descuento_modificado',
+    DESCUENTO_ELIMINADO = 'descuento_eliminado',
+    DESCUENTO_RESTAURADO = 'descuento_restaurado',
+
     // Configuración
     CONFIG_MODIFICADA = 'config_modificada',
+    CONFIG_CREADA = 'config_creada',
+    CONFIG_ELIMINADA = 'config_eliminada',
     DOLAR_ACTUALIZADO = 'dolar_actualizado',
   
     // Sistema

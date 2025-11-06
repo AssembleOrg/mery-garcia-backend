@@ -402,7 +402,7 @@ export class ClienteService {
       .where('pg.estado = :estado', { estado: EstadoPrepago.ACTIVA })
       .groupBy('pg.moneda')
       .getRawMany<{ moneda: TipoMoneda; total: string; montoTraspasado: string }>();
-      console.log(rows);
+      console.log(rows, "hola");
 
     let ars = 0;
     let usd = 0;
