@@ -1,7 +1,8 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
-import { IsEnum, IsNumber, IsString, Min } from "class-validator";
+import { IsEnum, IsNumber, IsOptional, IsString, Min } from "class-validator";
 import { TipoMoneda } from "src/enums/TipoMoneda.enum";
+import { Caja } from "src/enums/Caja.enum";
 
 
 export class EgresoDto {
@@ -49,4 +50,14 @@ export class EgresoDto {
   @IsString()
   @IsEnum(TipoMoneda)
   moneda: string;
+
+  @ApiPropertyOptional({
+    description: 'Caja de la que se extrae el egreso',
+    enum: Caja,
+    example: Caja.CAJA_1,
+    default: Caja.CAJA_1,
+  })
+  @IsOptional()
+  @IsEnum(Caja)
+  caja?: Caja;
 }

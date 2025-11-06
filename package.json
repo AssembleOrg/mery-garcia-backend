@@ -11,7 +11,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/src/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -24,7 +24,11 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "create-admin": "ts-node -r tsconfig-paths/register src/scripts/create-admin.ts",
     "populate-cajas": "ts-node -r tsconfig-paths/register src/scripts/populate-cajas.ts",
-    "populate-tipos": "ts-node -r tsconfig-paths/register src/scripts/populate-tipos.ts"
+    "populate-tipos": "ts-node -r tsconfig-paths/register src/scripts/populate-tipos.ts",
+    "fix-movimientos-timezone": "ts-node -r tsconfig-paths/register scripts/fix-movimientos-timezone.ts",
+    "verificar-movimientos": "ts-node -r tsconfig-paths/register scripts/verificar-movimientos.ts",
+    "fix-egresos-timestamps": "ts-node -r tsconfig-paths/register scripts/fix-egresos-timestamps.ts",
+    "eliminar-movimiento": "ts-node -r tsconfig-paths/register scripts/eliminar-movimiento.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.839.0",
