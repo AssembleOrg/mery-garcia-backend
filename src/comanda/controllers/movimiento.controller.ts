@@ -189,7 +189,7 @@ export class MovimientoController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ 
     summary: 'Eliminar un movimiento',
-    description: 'Elimina un movimiento (soft delete)'
+    description: 'Elimina un movimiento y revierte todos los cambios asociados: devuelve las comandas a estado VALIDADO y revierte los cambios en montoTraspasado de los prepagos relacionados'
   })
   @ApiParam({ 
     name: 'id', 

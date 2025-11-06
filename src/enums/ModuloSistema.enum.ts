@@ -18,4 +18,7 @@ export enum ModuloSistema {
     UNIDAD_NEGOCIO = 'unidad_negocio',
     TRABAJADOR = 'trabajador',
     PREPAGO_GUARDADO = 'prepago_guardado',
+    EGRESO = 'egreso',
+    METODO_PAGO = 'metodo_pago',
+    DESCUENTO = 'descuento',
 }

@@ -14,6 +14,24 @@ import { Transform } from 'class-transformer';
 
 export class CrearMovimientoDto {
   @ApiProperty({
+    description: 'Monto del movimiento en ARS',
+    example: 25000.50,
+    minimum: 0
+  })
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  efectivoARS: number;
+
+  @ApiProperty({
+    description: 'Monto del movimiento en USD',
+    example: 25000.50,
+    minimum: 0
+  })
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @Min(0)
+  efectivoUSD: number;
+
+  @ApiProperty({
     description: 'Monto del movimiento',
     example: 25000.50,
     minimum: 0
