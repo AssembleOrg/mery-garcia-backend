@@ -3124,8 +3124,10 @@ export class ComandaService {
     const totalesPorTrabajador = new Map<string, {
       trabajadorId: string;
       nombre: string;
-      totalServicios: number;
-      totalProductos: number;
+      totalServicios: number;           // For display (with discount)
+      totalProductos: number;            // For display (with discount)
+      totalServiciosSinDescuento: number; // For commission calculation
+      totalProductosSinDescuento: number; // For commission calculation
       cantidadConsultas: number;
       totalConsultas: number;
       unidadesNegocio: Map<string, number>; // nombre unidad -> cantidad
@@ -3181,6 +3183,8 @@ export class ComandaService {
             nombre,
             totalServicios: 0,
             totalProductos: 0,
+            totalServiciosSinDescuento: 0,
+            totalProductosSinDescuento: 0,
             cantidadConsultas: 0,
             totalConsultas: 0,
             unidadesNegocio: new Map(),
@@ -3232,10 +3236,13 @@ export class ComandaService {
         }
 
         // Sumar al total correspondiente según el tipo
+        // Acumular valores sin descuento para display y cálculo de comisiones
         if (tipo === TipoProductoServicio.SERVICIO) {
-          trabajadorData.totalServicios += subtotalConDescuento;
+          trabajadorData.totalServicios += subtotal;
+          trabajadorData.totalServiciosSinDescuento += subtotal;
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
-          trabajadorData.totalProductos += subtotalConDescuento;
+          trabajadorData.totalProductos += subtotal;
+          trabajadorData.totalProductosSinDescuento += subtotal;
         }
       });
     });
@@ -3243,8 +3250,9 @@ export class ComandaService {
     // Calcular comisiones para cada trabajador
     const trabajadores = Array.from(totalesPorTrabajador.values()).map((trabajadorData) => {
       // Comisiones: 30% de servicios, 10% de productos
-      const comisionServicios = trabajadorData.totalServicios * 0.30;
-      const comisionProductos = trabajadorData.totalProductos * 0.10;
+      // Calcular sobre montos sin descuento (antes del -10%)
+      const comisionServicios = trabajadorData.totalServiciosSinDescuento * 0.30;
+      const comisionProductos = trabajadorData.totalProductosSinDescuento * 0.10;
       const totalComision = comisionServicios + comisionProductos;
 
       // Convertir Map de unidades de negocio a objeto
