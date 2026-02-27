@@ -21,6 +21,7 @@ import { ModuloSistema } from '../../enums/ModuloSistema.enum';
 import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { TipoPago } from 'src/enums/TipoPago.enum';
+import { AjusteEfectivoCaja2 } from '../entities/ajuste-efectivo-caja2.entity';
 
 export interface MovimientosPaginados {
   data: Movimiento[];
@@ -53,6 +54,8 @@ export class MovimientoService {
     private prepagoGuardadoRepository: Repository<PrepagoGuardado>,
     @InjectRepository(Egreso)
     private egresoRepository: Repository<Egreso>,
+    @InjectRepository(AjusteEfectivoCaja2)
+    private ajusteEfectivoCaja2Repository: Repository<AjusteEfectivoCaja2>,
     private auditoriaService: AuditoriaService,
     private dataSource: DataSource,
   ) {}
@@ -226,15 +229,37 @@ export class MovimientoService {
       
       if (filtros.fechaDesde && filtros.fechaHasta) {
         // Sumar directamente los campos efectivoARS y efectivoUSD de los movimientos filtrados
+        const baseARS = movimientos.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.efectivoARS) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.montoARS) : 0), 0);
+        const baseUSD = movimientos.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.efectivoUSD) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.montoUSD) : 0), 0);
+
+        // Sumar ajustes directos de efectivo en CAJA_2
+        const fechaDesdeAjuste = new Date(filtros.fechaDesde);
+        const fechaHastaRawAjuste = new Date(filtros.fechaHasta);
+        const fechaHastaAjuste = new Date(fechaHastaRawAjuste.getTime() + (24 * 60 * 60 * 1000) - 1);
+
+        const ajustesCaja2 = await this.ajusteEfectivoCaja2Repository
+          .createQueryBuilder('ajuste')
+          .select('COALESCE(SUM(ajuste.montoARS), 0)', 'totalARS')
+          .addSelect('COALESCE(SUM(ajuste.montoUSD), 0)', 'totalUSD')
+          .where('ajuste.createdAt >= :desde', { desde: fechaDesdeAjuste })
+          .andWhere('ajuste.createdAt <= :hasta', { hasta: fechaHastaAjuste })
+          .andWhere('ajuste.deletedAt IS NULL')
+          .getRawOne();
+
+        const ajusteARS = Number(ajustesCaja2?.totalARS ?? 0);
+        const ajusteUSD = Number(ajustesCaja2?.totalUSD ?? 0);
+
         netoEfectivo = {
-          ARS: movimientos.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.efectivoARS) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoARS ? Number(mov.montoARS) : 0), 0),
-          USD: movimientos.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.efectivoUSD) : 0), 0) - movEgresosCaja2.reduce((sum, mov) => sum + (mov.efectivoUSD ? Number(mov.montoUSD) : 0), 0),
+          ARS: baseARS + ajusteARS,
+          USD: baseUSD + ajusteUSD,
         };
-        
+
         console.log('\n📊 Cálculo netoEfectivo desde campos de movimientos:');
         console.log(`   Total movimientos en período: ${movimientos.length}`);
         console.log(`   Movimientos con efectivoARS > 0: ${movimientos.filter(mov => mov.efectivoARS > 0).length}`);
         console.log(`   Movimientos con efectivoUSD > 0: ${movimientos.filter(mov => mov.efectivoUSD > 0).length}`);
+        console.log(`   Base ARS: ${baseARS}, Ajustes CAJA2 ARS: ${ajusteARS}`);
+        console.log(`   Base USD: ${baseUSD}, Ajustes CAJA2 USD: ${ajusteUSD}`);
         console.log(`   Neto efectivo ARS: ${netoEfectivo.ARS}`);
         console.log(`   Neto efectivo USD: ${netoEfectivo.USD}`);
       }

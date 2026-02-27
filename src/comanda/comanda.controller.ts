@@ -11,6 +11,7 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -39,10 +40,12 @@ import { LogAction } from 'src/decorators/log-action.decorator';
 import { Audit } from 'src/decorators/audit.decorator';
 import { Movimiento } from './entities/movimiento.entity';
 import { ActualizarEgresoDto } from './dto/actualizar-egreso.dto';
+import { CrearAjusteEfectivoCaja2Dto } from './dto/ajuste-efectivo-caja2.dto';
+import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
 
 @ApiTags('Comandas')
 @Controller('comandas')
-// @UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @ApiBearerAuth()
 export class ComandaController {
   constructor(
@@ -524,6 +527,70 @@ Si es un egreso de CAJA_2 traspasado, actualiza automáticamente el movimiento a
       dolar,
     });
   }
+
+  // ─── Ajuste Efectivo CAJA 2 ──────────────────────────────────────
+
+  @Post('ajuste-efectivo-caja2')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @LogAction({ action: 'CREATE', entityType: 'AjusteEfectivoCaja2' })
+  @Audit({
+    action: 'CREATE',
+    entityType: 'AjusteEfectivoCaja2',
+    description: 'Ajuste directo de efectivo en CAJA_2',
+    includeRelations: true,
+  })
+  @ApiOperation({
+    summary: 'Ajustar efectivo en CAJA_2',
+    description:
+      'Agrega o resta efectivo directamente al saldo de CAJA_2. ' +
+      'Montos positivos agregan, montos negativos restan. ' +
+      'Soporta ARS y USD simultáneamente.',
+  })
+  @ApiResponse({ status: 201, description: 'Ajuste creado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (ambos montos en cero)' })
+  async crearAjusteEfectivoCaja2(
+    @Body() dto: CrearAjusteEfectivoCaja2Dto,
+    @Req() req: any,
+  ): Promise<AjusteEfectivoCaja2> {
+    return await this.comandaService.crearAjusteEfectivoCaja2(dto, req.user.id);
+  }
+
+  @Get('saldo-efectivo-caja2')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)
+  @ApiOperation({
+    summary: 'Obtener saldo de efectivo en CAJA_2',
+    description:
+      'Devuelve el saldo actual de efectivo en CAJA_2 (ARS y USD) ' +
+      'junto con el historial de ajustes.',
+  })
+  @ApiResponse({ status: 200, description: 'Saldo obtenido exitosamente' })
+  async obtenerSaldoEfectivoCaja2() {
+    return await this.comandaService.obtenerSaldoEfectivoCaja2();
+  }
+
+  @Delete('ajuste-efectivo-caja2/:id')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @LogAction({ action: 'DELETE', entityType: 'AjusteEfectivoCaja2' })
+  @Audit({
+    action: 'DELETE',
+    entityType: 'AjusteEfectivoCaja2',
+    description: 'Eliminación de ajuste de efectivo en CAJA_2',
+  })
+  @ApiOperation({
+    summary: 'Eliminar un ajuste de efectivo de CAJA_2',
+    description: 'Elimina un ajuste (soft delete). Esto revierte su efecto en el saldo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del ajuste a eliminar' })
+  @ApiResponse({ status: 204, description: 'Ajuste eliminado' })
+  @ApiResponse({ status: 404, description: 'Ajuste no encontrado' })
+  async eliminarAjusteEfectivoCaja2(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
+    return await this.comandaService.eliminarAjusteEfectivoCaja2(id);
+  }
+
+  // ─── Comanda por ID ────────────────────────────────────────────
 
   @Get(':id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.USER)

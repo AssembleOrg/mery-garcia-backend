@@ -28,7 +28,8 @@
     "fix-movimientos-timezone": "ts-node -r tsconfig-paths/register scripts/fix-movimientos-timezone.ts",
     "verificar-movimientos": "ts-node -r tsconfig-paths/register scripts/verificar-movimientos.ts",
     "fix-egresos-timestamps": "ts-node -r tsconfig-paths/register scripts/fix-egresos-timestamps.ts",
-    "eliminar-movimiento": "ts-node -r tsconfig-paths/register scripts/eliminar-movimiento.ts"
+    "eliminar-movimiento": "ts-node -r tsconfig-paths/register scripts/eliminar-movimiento.ts",
+    "comisiones-enero": "ts-node -r tsconfig-paths/register scripts/comisiones-enero.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.839.0",
