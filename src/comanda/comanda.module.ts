@@ -30,6 +30,7 @@ import { PersonalModule } from 'src/personal/personal.module';
 import { Trabajador } from 'src/personal/entities/Trabajador.entity';
 import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { Egreso } from './entities/egreso.entity';
+import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
   
 @Module({
   imports: [
@@ -42,7 +43,8 @@ import { Egreso } from './entities/egreso.entity';
       Movimiento,
       Descuento,
       Egreso,
-      Cliente, 
+      AjusteEfectivoCaja2,
+      Cliente,
       Personal, 
       MetodoPago, 
       Prepago,

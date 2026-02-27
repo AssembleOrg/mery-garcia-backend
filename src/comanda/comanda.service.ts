@@ -47,6 +47,8 @@ import { TipoItem } from './entities/TipoItem.entity';
 import { TipoPago } from 'src/enums/TipoPago.enum';
 import { Movimiento } from './entities/movimiento.entity';
 import { ActualizarEgresoDto } from './dto/actualizar-egreso.dto';
+import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
+import { CrearAjusteEfectivoCaja2Dto } from './dto/ajuste-efectivo-caja2.dto';
 
 export interface ComandasPaginadas {
   data: Comanda[];
@@ -85,6 +87,8 @@ export class ComandaService {
     private auditoriaService: AuditoriaService,
     @InjectRepository(Movimiento)
     private movimientoRepository: Repository<Movimiento>,
+    @InjectRepository(AjusteEfectivoCaja2)
+    private ajusteEfectivoCaja2Repository: Repository<AjusteEfectivoCaja2>,
   ) { }
 
   async crear(crearComandaDto: CrearComandaDto): Promise<Comanda> {
@@ -3312,5 +3316,67 @@ export class ComandaService {
       },
       totalComisiones: Number(totalComisiones.toFixed(2)),
     };
+  }
+
+  // ─── Ajuste Efectivo CAJA 2 ──────────────────────────────────────
+
+  async crearAjusteEfectivoCaja2(
+    dto: CrearAjusteEfectivoCaja2Dto,
+    personalId: string,
+  ): Promise<AjusteEfectivoCaja2> {
+    if (dto.montoARS === 0 && dto.montoUSD === 0) {
+      throw new BadRequestException(
+        'Al menos uno de los montos (ARS o USD) debe ser distinto de cero',
+      );
+    }
+
+    const ajuste = this.ajusteEfectivoCaja2Repository.create({
+      montoARS: dto.montoARS,
+      montoUSD: dto.montoUSD,
+      observaciones: dto.observaciones,
+      personal: { id: personalId } as Personal,
+    });
+
+    return await this.ajusteEfectivoCaja2Repository.save(ajuste);
+  }
+
+  async obtenerSaldoEfectivoCaja2(): Promise<{
+    totalARS: number;
+    totalUSD: number;
+    ajustes: AjusteEfectivoCaja2[];
+  }> {
+    const ajustes = await this.ajusteEfectivoCaja2Repository.find({
+      relations: ['personal'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const totalARS = ajustes.reduce(
+      (sum, a) => sum + Number(a.montoARS),
+      0,
+    );
+    const totalUSD = ajustes.reduce(
+      (sum, a) => sum + Number(a.montoUSD),
+      0,
+    );
+
+    return {
+      totalARS: Number(totalARS.toFixed(2)),
+      totalUSD: Number(totalUSD.toFixed(2)),
+      ajustes,
+    };
+  }
+
+  async eliminarAjusteEfectivoCaja2(id: string): Promise<void> {
+    const ajuste = await this.ajusteEfectivoCaja2Repository.findOne({
+      where: { id },
+    });
+
+    if (!ajuste) {
+      throw new NotFoundException(
+        `Ajuste con ID ${id} no encontrado`,
+      );
+    }
+
+    await this.ajusteEfectivoCaja2Repository.softDelete(id);
   }
 }
