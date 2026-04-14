@@ -20,9 +20,6 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RemindersService.name);
   private pgClient: PgClient | null = null;
 
-  // Track which booking IDs we've already sent reminders for (reset daily)
-  private sentReminders = new Set<string>();
-
   // Configuration
   private readonly bookingDbUrl: string;
   private readonly whatsappApiUrl: string;
@@ -74,31 +71,29 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Run every hour to check for Estilismo bookings in the next 24 hours.
-   * Sends WhatsApp reminders via mery-chatbot.
+   * Cron job that runs every 2 hours to check for Estilismo bookings
+   * within the next 72 hours that haven't received a reminder yet.
+   * 72hs gives clients enough time to cancel/reschedule before the 48h cutoff.
+   * 
+   * Duplicate prevention: uses the `reminder_sent` column in the bookings table.
+   * Test mode config: REMINDER_TEST_MODE and REMINDER_TEST_PHONE in .env
    */
-  @Cron('0 * * * *') // Every hour at minute 0
+  @Cron('0 */2 * * *') // Every 2 hours at minute 0
   async handleReminders(): Promise<void> {
-    this.logger.log('🔍 Checking for upcoming Estilismo bookings...');
+    this.logger.log('🔍 Checking for upcoming Estilismo bookings (72h window)...');
 
     try {
       const bookings = await this.getUpcomingEstilismoBookings();
 
       if (bookings.length === 0) {
-        this.logger.log('No upcoming Estilismo bookings found for reminders.');
+        this.logger.log('No upcoming Estilismo bookings pending reminders.');
         return;
       }
 
-      this.logger.log(`Found ${bookings.length} upcoming Estilismo booking(s).`);
+      this.logger.log(`Found ${bookings.length} Estilismo booking(s) pending reminder.`);
 
       let sentCount = 0;
       for (const booking of bookings) {
-        // Skip if already sent
-        if (this.sentReminders.has(booking.id)) {
-          this.logger.debug(`Skipping booking ${booking.bookingCode} — reminder already sent.`);
-          continue;
-        }
-
         const phone = this.testMode ? this.testPhone : this.normalizeArgentinePhone(booking.clientPhone);
 
         if (!phone) {
@@ -117,7 +112,11 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
         const success = await this.sendWhatsAppMessage(phone, message);
 
         if (success) {
-          this.sentReminders.add(booking.id);
+          // Only mark as sent in the database if NOT in test mode
+          // This prevents test runs from blocking real production reminders
+          if (!this.testMode) {
+            await this.markReminderSent(booking.id);
+          }
           sentCount++;
           this.logger.log(
             `✅ Reminder sent for booking ${booking.bookingCode} → ${this.testMode ? this.testPhone : phone} (${booking.clientName})`,
@@ -137,19 +136,9 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Reset the sent reminders set daily at midnight
-   */
-  @Cron('0 0 * * *') // Every day at midnight
-  resetSentReminders(): void {
-    const count = this.sentReminders.size;
-    this.sentReminders.clear();
-    this.logger.log(`🔄 Reset sent reminders set (cleared ${count} entries)`);
-  }
-
-  /**
    * Query the booking database for confirmed Estilismo bookings
-   * happening in the next ~24 hours (23-25 hour window).
-   * In test mode, expands to 7 days to find existing bookings.
+   * within the next 72 hours that haven't had a reminder sent yet.
+   * In test mode, expands window to 7 days to find existing bookings.
    */
   async getUpcomingEstilismoBookings(): Promise<UpcomingBooking[]> {
     if (!this.pgClient) {
@@ -157,9 +146,9 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       return [];
     }
 
-    // In test mode, widen the window to 7 days so we can find existing bookings
-    const minHours = this.testMode ? 0 : 23;
-    const maxHours = this.testMode ? 168 : 25;
+    // 72 hours window: notify 72h before so clients can reschedule before the 48h cutoff
+    // Same window in both test and production mode
+    const maxHours = 72;
 
     const query = `
       SELECT 
@@ -179,9 +168,10 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       WHERE s.category_id = $1
         AND b.status = 'CONFIRMED'
         AND b.deleted_at IS NULL
+        AND b.reminder_sent = false
         AND c.phone IS NOT NULL
         AND c.phone != ''
-        AND b.start_time BETWEEN NOW() + INTERVAL '${minHours} hours' AND NOW() + INTERVAL '${maxHours} hours'
+        AND b.start_time BETWEEN NOW() AND NOW() + INTERVAL '${maxHours} hours'
       ORDER BY b.start_time ASC
     `;
 
@@ -191,6 +181,22 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error('Error querying booking database:', error.message);
       return [];
+    }
+  }
+
+  /**
+   * Mark a booking's reminder as sent in the database
+   */
+  private async markReminderSent(bookingId: string): Promise<void> {
+    if (!this.pgClient) return;
+
+    try {
+      await this.pgClient.query(
+        'UPDATE bookings SET reminder_sent = true WHERE id = $1',
+        [bookingId],
+      );
+    } catch (error) {
+      this.logger.error(`Error marking reminder as sent for booking ${bookingId}:`, error.message);
     }
   }
 
@@ -240,7 +246,9 @@ export class RemindersService implements OnModuleInit, OnModuleDestroy {
       `*Fecha:* ${formattedDate}`,
       `*Horario:* ${timeStr} hs`,
       ``,
-      `Si necesitás cancelar o reprogramar tu turno, podés hacerlo desde acá:`,
+      `⚠️ Las cancelaciones o reprogramaciones deben realizarse con al menos *48 horas de anticipación* respecto al turno.`,
+      ``,
+      `Si necesitás modificar tu turno, podés hacerlo desde acá:`,
       `👉 https://merygarciabooking.com/cambiar-reserva`,
       ``,
       `¡Te esperamos! ✨`,
