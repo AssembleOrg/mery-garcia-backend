@@ -22,6 +22,7 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
 import { ConfigModule as SistemaConfigModule } from './config/config.module';
 import { CommonModule } from './common/common.module';
 import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.module';
+import { RemindersModule } from './reminders/reminders.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.modul
     SistemaConfigModule,
     CommonModule,
     PrepagoGuardadoModule,
+    RemindersModule,
   ],
   controllers: [AppController],
   providers: [
