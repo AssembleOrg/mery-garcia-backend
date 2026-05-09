@@ -1737,19 +1737,19 @@ export class ComandaService {
         },
         relations: ['cliente'],
       });
-      ultimoMovimiento = await this.movimientoRepository.findOne({
-        where: {
-          createdAt: Raw((a) => `${a} >= :from AND ${a} < :to`, {
-            from: fechaDesde,
-            to: fechaHasta,
-          }),
-          esIngreso: true,
-        },
-        order: {
-          createdAt: 'DESC',
-        },
-        relations: ['comandas'],
-      }) ?? {
+      // Buscar el último movimiento de INGRESO con comandas previo al fin del rango.
+      // Importante: NO se restringe a `>= fechaDesde` para que el residual del período
+      // anterior se "arrastre" cuando no hubo traspasos dentro del rango consultado.
+      // Las comandas que ese traspaso ya se llevó quedan filtradas por estado
+      // (VALIDADO/PENDIENTE), por lo tanto no hay doble conteo.
+      ultimoMovimiento = await this.movimientoRepository
+        .createQueryBuilder('mov')
+        .innerJoinAndSelect('mov.comandas', 'comanda') // al menos 1 comanda
+        .where('mov.esIngreso = :ing', { ing: true })
+        .andWhere('mov.createdAt < :to', { to: fechaHasta })
+        .orderBy('mov.createdAt', 'DESC')
+        .limit(1)
+        .getOne() ?? {
         residualARS: 0,
         residualUSD: 0,
       };
