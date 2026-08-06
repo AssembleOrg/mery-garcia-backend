@@ -3159,25 +3159,22 @@ export class ComandaService {
         // Verificar si es Rosario con consultas
         const esRosarioConConsulta = nombre === 'Rosario' && unidadNegocio === 'Consultas';
 
-        // Calcular precio en ARS
+        // Base de comisión = item.precio tal como fue cargado, en su moneda
+        // nativa (ARS para estilismo, USD para cosmetic tattoo). NO se aplica
+        // ninguna conversión con valorDolar ni se reemplaza por precioFijoARS:
+        // las comisiones se pagan/reportan en la moneda del propio precio, y
+        // los valores crudos coinciden exacto con las liquidaciones manuales.
         let precio = Number(item.precio ?? 0);
         const cantidad = Number(item.cantidad ?? 1);
         const descuento = Number(item.descuento ?? 0);
 
-        // Si el precio está congelado, usar precioFijoARS; de lo contrario, convertir USD a ARS
-        const esPrecioCongelado = item.productoServicio?.esPrecioCongelado;
-        const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
-
-        // Si el precio está congelado, usar el precio fijo en ARS
-        if (esPrecioCongelado && precioFijoARS > 0) {
-          precio = precioFijoARS;
-        } else {
-          // Si no está congelado, el precio está en USD y debe convertirse a ARS
-          // Si se proporciona un valorDolar en los filtros, usarlo; de lo contrario, usar el de la comanda
-          const valorDolar = filtros.dolar && filtros.dolar > 0
-            ? filtros.dolar
-            : Number(comanda.valorDolar ?? 1);
-          precio = precio * valorDolar; // Convertir USD a ARS
+        // Fallback: algunos ítems se cargaron con precio 0 apoyándose en el
+        // precio fijo en ARS. Solo en ese caso usamos precioFijoARS.
+        if (precio === 0) {
+          const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+          if (precioFijoARS > 0) {
+            precio = precioFijoARS;
+          }
         }
 
         // Inicializar o actualizar totales del trabajador
