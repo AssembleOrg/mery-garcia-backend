@@ -50,23 +50,23 @@ export class FiltrarComisionesDto {
 }
 
 export class ComisionPorTipoDto {
-  @ApiProperty({
-    description: 'Comisión de servicios',
-    example: 45000.50,
-  })
-  servicios: number;
+  @ApiProperty({ description: 'Comisión de servicios en ARS', example: 45000.5 })
+  serviciosARS: number;
 
-  @ApiProperty({
-    description: 'Comisión de productos',
-    example: 15000.25,
-  })
-  productos: number;
+  @ApiProperty({ description: 'Comisión de servicios en USD', example: 8311.56 })
+  serviciosUSD: number;
 
-  @ApiProperty({
-    description: 'Total de comisiones',
-    example: 60000.75,
-  })
-  total: number;
+  @ApiProperty({ description: 'Comisión de productos en ARS', example: 15000.25 })
+  productosARS: number;
+
+  @ApiProperty({ description: 'Comisión de productos en USD', example: 54.62 })
+  productosUSD: number;
+
+  @ApiProperty({ description: 'Total de comisiones en ARS', example: 60000.75 })
+  totalARS: number;
+
+  @ApiProperty({ description: 'Total de comisiones en USD', example: 8366.18 })
+  totalUSD: number;
 }
 
 export class ComisionTrabajadorDto {
@@ -82,17 +82,17 @@ export class ComisionTrabajadorDto {
   })
   nombre: string;
 
-  @ApiProperty({
-    description: 'Total de servicios antes de comisión (con -10% aplicado)',
-    example: 150000.00,
-  })
-  totalServicios: number;
+  @ApiProperty({ description: 'Total de servicios en ARS', example: 150000.0 })
+  serviciosARS: number;
 
-  @ApiProperty({
-    description: 'Total de productos antes de comisión (con -10% aplicado)',
-    example: 50000.00,
-  })
-  totalProductos: number;
+  @ApiProperty({ description: 'Total de servicios en USD', example: 27705.2 })
+  serviciosUSD: number;
+
+  @ApiProperty({ description: 'Total de productos en ARS', example: 50000.0 })
+  productosARS: number;
+
+  @ApiProperty({ description: 'Total de productos en USD', example: 546.29 })
+  productosUSD: number;
 
   @ApiProperty({
     description: 'Cantidad de consultas (solo para Rosario)',
@@ -125,41 +125,23 @@ export class ComisionTrabajadorDto {
 }
 
 export class TotalesGeneralesDto {
-  @ApiProperty({
-    description: 'Total de servicios sin descuento',
-    example: 500000.00,
-  })
-  serviciosSinDescuento: number;
+  @ApiProperty({ description: 'Total de servicios en ARS', example: 500000.0 })
+  serviciosARS: number;
 
-  @ApiProperty({
-    description: 'Total de servicios con descuento del 10% aplicado',
-    example: 450000.00,
-  })
-  serviciosConDescuento: number;
+  @ApiProperty({ description: 'Total de servicios en USD', example: 27705.2 })
+  serviciosUSD: number;
 
-  @ApiProperty({
-    description: 'Total de productos sin descuento',
-    example: 150000.00,
-  })
-  productosSinDescuento: number;
+  @ApiProperty({ description: 'Total de productos en ARS', example: 150000.0 })
+  productosARS: number;
 
-  @ApiProperty({
-    description: 'Total de productos con descuento del 10% aplicado',
-    example: 135000.00,
-  })
-  productosConDescuento: number;
+  @ApiProperty({ description: 'Total de productos en USD', example: 546.29 })
+  productosUSD: number;
 
-  @ApiProperty({
-    description: 'Total general sin descuento (servicios + productos)',
-    example: 650000.00,
-  })
-  totalSinDescuento: number;
+  @ApiProperty({ description: 'Total general en ARS (servicios + productos)', example: 650000.0 })
+  totalARS: number;
 
-  @ApiProperty({
-    description: 'Total general con descuento - Saldo de caja',
-    example: 585000.00,
-  })
-  totalConDescuento: number;
+  @ApiProperty({ description: 'Total general en USD (servicios + productos)', example: 28251.49 })
+  totalUSD: number;
 }
 
 export class ResumenComisionesDto {
@@ -188,9 +170,15 @@ export class ResumenComisionesDto {
   totales: TotalesGeneralesDto;
 
   @ApiProperty({
-    description: 'Total general de comisiones',
+    description: 'Total general de comisiones en ARS',
     example: 120000.50,
   })
-  totalComisiones: number;
+  totalComisionesARS: number;
+
+  @ApiProperty({
+    description: 'Total general de comisiones en USD',
+    example: 8366.18,
+  })
+  totalComisionesUSD: number;
 }
 

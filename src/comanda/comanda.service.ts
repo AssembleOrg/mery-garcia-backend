@@ -3068,25 +3068,38 @@ export class ComandaService {
     trabajadores: Array<{
       trabajadorId: string;
       nombre: string;
-      totalServicios: number;
-      totalProductos: number;
+      // Montos separados por moneda: los servicios/productos de estilismo y
+      // productos se cobran en ARS; los de cosmetic tattoo (unidades
+      // "Cosmetic Tatto"/"Tattoo") en USD. NO se mezclan ni se convierten.
+      serviciosARS: number;
+      serviciosUSD: number;
+      productosARS: number;
+      productosUSD: number;
       comisiones: {
-        servicios: number;
-        productos: number;
-        total: number;
+        serviciosARS: number;
+        serviciosUSD: number;
+        productosARS: number;
+        productosUSD: number;
+        totalARS: number;
+        totalUSD: number;
       };
     }>;
     totales: {
-      serviciosSinDescuento: number;
-      serviciosConDescuento: number;
-      productosSinDescuento: number;
-      productosConDescuento: number;
-      totalSinDescuento: number;
-      totalConDescuento: number;
+      serviciosARS: number;
+      serviciosUSD: number;
+      productosARS: number;
+      productosUSD: number;
+      totalARS: number;
+      totalUSD: number;
     };
-    totalComisiones: number;
+    totalComisionesARS: number;
+    totalComisionesUSD: number;
   }> {
     const tz = 'America/Argentina/Buenos_Aires';
+
+    // Unidades de negocio cuyos precios están en USD (cosmetic tattoo).
+    // El resto (Estilismo, Productos, Consultas) se maneja en ARS.
+    const UNIDADES_USD = ['Cosmetic Tatto', 'Tattoo'];
 
     // Determinar rango de fechas
     let fechaDesde: DateTime;
@@ -3128,21 +3141,21 @@ export class ComandaService {
     const totalesPorTrabajador = new Map<string, {
       trabajadorId: string;
       nombre: string;
-      totalServicios: number;           // For display (with discount)
-      totalProductos: number;            // For display (with discount)
-      totalServiciosSinDescuento: number; // For commission calculation
-      totalProductosSinDescuento: number; // For commission calculation
+      serviciosARS: number;
+      serviciosUSD: number;
+      productosARS: number;
+      productosUSD: number;
       cantidadConsultas: number;
       totalConsultas: number;
       unidadesNegocio: Map<string, number>; // nombre unidad -> cantidad
       productosServicios: Map<string, { cantidad: number; tipo: string }>; // nombre producto/servicio -> {cantidad, tipo}
     }>();
 
-    // Totales generales
-    let totalServiciosSinDescuento = 0;
-    let totalServiciosConDescuento = 0;
-    let totalProductosSinDescuento = 0;
-    let totalProductosConDescuento = 0;
+    // Totales generales por moneda
+    let totalServiciosARS = 0;
+    let totalServiciosUSD = 0;
+    let totalProductosARS = 0;
+    let totalProductosUSD = 0;
 
     // Procesar cada comanda y sus items
     comandas.forEach((comanda) => {
@@ -3182,10 +3195,10 @@ export class ComandaService {
           totalesPorTrabajador.set(trabajadorId, {
             trabajadorId,
             nombre,
-            totalServicios: 0,
-            totalProductos: 0,
-            totalServiciosSinDescuento: 0,
-            totalProductosSinDescuento: 0,
+            serviciosARS: 0,
+            serviciosUSD: 0,
+            productosARS: 0,
+            productosUSD: 0,
             cantidadConsultas: 0,
             totalConsultas: 0,
             unidadesNegocio: new Map(),
@@ -3221,40 +3234,40 @@ export class ComandaService {
           return;
         }
 
-        // Calcular subtotal en ARS
+        // Subtotal en la moneda nativa del ítem (precio ya viene en ARS o USD)
         const subtotal = (precio * cantidad) - descuento;
 
-        // Aplicar -10% (multiplicar por 0.9)
-        const subtotalConDescuento = subtotal * 0.9;
+        // La moneda depende de la unidad de negocio: cosmetic tattoo = USD,
+        // el resto (estilismo, productos) = ARS. No se convierte ni se mezcla.
+        const esUSD = !!unidadNegocio && UNIDADES_USD.includes(unidadNegocio);
 
-        // Acumular totales generales
         if (tipo === TipoProductoServicio.SERVICIO) {
-          totalServiciosSinDescuento += subtotal;
-          totalServiciosConDescuento += subtotalConDescuento;
+          if (esUSD) {
+            trabajadorData.serviciosUSD += subtotal;
+            totalServiciosUSD += subtotal;
+          } else {
+            trabajadorData.serviciosARS += subtotal;
+            totalServiciosARS += subtotal;
+          }
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
-          totalProductosSinDescuento += subtotal;
-          totalProductosConDescuento += subtotalConDescuento;
-        }
-
-        // Sumar al total correspondiente según el tipo
-        // Acumular valores sin descuento para display y cálculo de comisiones
-        if (tipo === TipoProductoServicio.SERVICIO) {
-          trabajadorData.totalServicios += subtotal;
-          trabajadorData.totalServiciosSinDescuento += subtotal;
-        } else if (tipo === TipoProductoServicio.PRODUCTO) {
-          trabajadorData.totalProductos += subtotal;
-          trabajadorData.totalProductosSinDescuento += subtotal;
+          if (esUSD) {
+            trabajadorData.productosUSD += subtotal;
+            totalProductosUSD += subtotal;
+          } else {
+            trabajadorData.productosARS += subtotal;
+            totalProductosARS += subtotal;
+          }
         }
       });
     });
 
-    // Calcular comisiones para cada trabajador
+    // Calcular comisiones para cada trabajador (separadas por moneda)
     const trabajadores = Array.from(totalesPorTrabajador.values()).map((trabajadorData) => {
-      // Comisiones: 30% de servicios, 10% de productos
-      // Calcular sobre montos sin descuento (antes del -10%)
-      const comisionServicios = trabajadorData.totalServiciosSinDescuento * 0.30;
-      const comisionProductos = trabajadorData.totalProductosSinDescuento * 0.10;
-      const totalComision = comisionServicios + comisionProductos;
+      // Comisiones: 30% de servicios, 10% de productos, en cada moneda
+      const comServiciosARS = trabajadorData.serviciosARS * 0.30;
+      const comServiciosUSD = trabajadorData.serviciosUSD * 0.30;
+      const comProductosARS = trabajadorData.productosARS * 0.10;
+      const comProductosUSD = trabajadorData.productosUSD * 0.10;
 
       // Convertir Map de unidades de negocio a objeto
       const unidadesNegocio: Record<string, number> = {};
@@ -3275,43 +3288,49 @@ export class ComandaService {
       return {
         trabajadorId: trabajadorData.trabajadorId,
         nombre: trabajadorData.nombre,
-        totalServicios: Number(trabajadorData.totalServicios.toFixed(2)),
-        totalProductos: Number(trabajadorData.totalProductos.toFixed(2)),
+        serviciosARS: Number(trabajadorData.serviciosARS.toFixed(2)),
+        serviciosUSD: Number(trabajadorData.serviciosUSD.toFixed(2)),
+        productosARS: Number(trabajadorData.productosARS.toFixed(2)),
+        productosUSD: Number(trabajadorData.productosUSD.toFixed(2)),
         cantidadConsultas: trabajadorData.cantidadConsultas,
         totalConsultas: Number(trabajadorData.totalConsultas.toFixed(2)),
         unidadesNegocio,
         productosServicios,
         comisiones: {
-          servicios: Number(comisionServicios.toFixed(2)),
-          productos: Number(comisionProductos.toFixed(2)),
-          total: Number(totalComision.toFixed(2)),
+          serviciosARS: Number(comServiciosARS.toFixed(2)),
+          serviciosUSD: Number(comServiciosUSD.toFixed(2)),
+          productosARS: Number(comProductosARS.toFixed(2)),
+          productosUSD: Number(comProductosUSD.toFixed(2)),
+          totalARS: Number((comServiciosARS + comProductosARS).toFixed(2)),
+          totalUSD: Number((comServiciosUSD + comProductosUSD).toFixed(2)),
         },
       };
     });
 
-    // Calcular total general de comisiones
-    const totalComisiones = trabajadores.reduce(
-      (sum, t) => sum + t.comisiones.total,
+    // Totales generales de comisiones por moneda
+    const totalComisionesARS = trabajadores.reduce(
+      (sum, t) => sum + t.comisiones.totalARS,
       0,
     );
-
-    // Calcular totales generales
-    const totalSinDescuento = totalServiciosSinDescuento + totalProductosSinDescuento;
-    const totalConDescuento = totalServiciosConDescuento + totalProductosConDescuento;
+    const totalComisionesUSD = trabajadores.reduce(
+      (sum, t) => sum + t.comisiones.totalUSD,
+      0,
+    );
 
     return {
       fechaDesde: fechaDesde.toISO() || fechaDesde.toString(),
       fechaHasta: fechaHasta.toISO() || fechaHasta.toString(),
       trabajadores,
       totales: {
-        serviciosSinDescuento: Number(totalServiciosSinDescuento.toFixed(2)),
-        serviciosConDescuento: Number(totalServiciosConDescuento.toFixed(2)),
-        productosSinDescuento: Number(totalProductosSinDescuento.toFixed(2)),
-        productosConDescuento: Number(totalProductosConDescuento.toFixed(2)),
-        totalSinDescuento: Number(totalSinDescuento.toFixed(2)),
-        totalConDescuento: Number(totalConDescuento.toFixed(2)),
+        serviciosARS: Number(totalServiciosARS.toFixed(2)),
+        serviciosUSD: Number(totalServiciosUSD.toFixed(2)),
+        productosARS: Number(totalProductosARS.toFixed(2)),
+        productosUSD: Number(totalProductosUSD.toFixed(2)),
+        totalARS: Number((totalServiciosARS + totalProductosARS).toFixed(2)),
+        totalUSD: Number((totalServiciosUSD + totalProductosUSD).toFixed(2)),
       },
-      totalComisiones: Number(totalComisiones.toFixed(2)),
+      totalComisionesARS: Number(totalComisionesARS.toFixed(2)),
+      totalComisionesUSD: Number(totalComisionesUSD.toFixed(2)),
     };
   }
 
