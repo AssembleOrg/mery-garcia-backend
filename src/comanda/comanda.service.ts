@@ -2135,6 +2135,18 @@ export class ComandaService {
         USD: number;
       };
     };
+    // Detalle línea por línea de cada ingreso que compone el total por método de pago
+    detallePorMetodoPago: {
+      [key in TipoPago]: Array<{
+        origen: 'comanda' | 'seña';
+        comandaId?: string;
+        numero?: string;
+        cliente?: string;
+        fecha: string;
+        moneda: 'ARS' | 'USD';
+        monto: number;
+      }>;
+    };
     porUnidadNegocio: {
       [unidadNegocioId: string]: {
         nombre: string;
@@ -2173,7 +2185,7 @@ export class ComandaService {
           to: fechaHasta,
         }),
       },
-      relations: ['egresos', 'prepagoARS', 'prepagoUSD', 'items', 'items.metodosPago', 'items.productoServicio', 'items.productoServicio.unidadNegocio', 'metodosPago'],
+      relations: ['egresos', 'prepagoARS', 'prepagoUSD', 'items', 'items.metodosPago', 'items.productoServicio', 'items.productoServicio.unidadNegocio', 'metodosPago', 'cliente'],
     });
 
     const prepagosGuardados = await this.prepagoGuardadoRepository.find({
@@ -2184,6 +2196,7 @@ export class ComandaService {
           to: fechaHasta,
         }),
       },
+      relations: ['cliente'],
     });
 
 
@@ -2225,6 +2238,27 @@ export class ComandaService {
       [TipoPago.QR]: { ARS: 0, USD: 0 },
       [TipoPago.GIFT_CARD]: { ARS: 0, USD: 0 },
       [TipoPago.MERCADO_PAGO]: { ARS: 0, USD: 0 },
+    };
+
+    // Detalle línea por línea de cada ingreso por método de pago (para el modal)
+    const detallePorMetodoPago: {
+      [key in TipoPago]: Array<{
+        origen: 'comanda' | 'seña';
+        comandaId?: string;
+        numero?: string;
+        cliente?: string;
+        fecha: string;
+        moneda: 'ARS' | 'USD';
+        monto: number;
+      }>;
+    } = {
+      [TipoPago.EFECTIVO]: [],
+      [TipoPago.TARJETA]: [],
+      [TipoPago.TRANSFERENCIA]: [],
+      [TipoPago.CHEQUE]: [],
+      [TipoPago.QR]: [],
+      [TipoPago.GIFT_CARD]: [],
+      [TipoPago.MERCADO_PAGO]: [],
     };
 
     // Initialize breakdown by business unit
@@ -2309,6 +2343,19 @@ export class ComandaService {
               porMetodoPago[tipoPago].ARS += montoFinal;
             } else if (tipoMoneda === TipoMoneda.USD) {
               porMetodoPago[tipoPago].USD += montoFinal;
+            }
+
+            // Guardar detalle del ingreso para el modal (solo montos > 0)
+            if (montoFinal > 0 && detallePorMetodoPago[tipoPago]) {
+              detallePorMetodoPago[tipoPago].push({
+                origen: 'comanda',
+                comandaId: comanda.id,
+                numero: comanda.numero,
+                cliente: comanda.cliente?.nombre,
+                fecha: comanda.createdAt?.toISOString?.() ?? String(comanda.createdAt),
+                moneda: tipoMoneda === TipoMoneda.USD ? 'USD' : 'ARS',
+                monto: montoFinal,
+              });
             }
           });
 
@@ -2567,6 +2614,17 @@ export class ComandaService {
       } else if (tipoMoneda === TipoMoneda.USD) {
         porMetodoPago[tipoPago].USD += monto;
       }
+
+      // Guardar detalle de la seña/prepago para el modal
+      if (monto > 0 && detallePorMetodoPago[tipoPago]) {
+        detallePorMetodoPago[tipoPago].push({
+          origen: 'seña',
+          cliente: prepago.cliente?.nombre,
+          fecha: prepago.fechaCreacion?.toISOString?.() ?? String(prepago.fechaCreacion),
+          moneda: tipoMoneda === TipoMoneda.USD ? 'USD' : 'ARS',
+          monto,
+        });
+      }
     });
 
     const totalPrepagosARS = prepagosGuardados
@@ -2622,6 +2680,7 @@ export class ComandaService {
       comandasValidadasIds,
       porMetodoPago,
       porMetodoPagoEgresos,
+      detallePorMetodoPago,
       porUnidadNegocio,
     };
   }
