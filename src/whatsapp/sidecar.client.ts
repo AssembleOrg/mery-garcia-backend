@@ -29,11 +29,14 @@ export class SidecarClient {
     this.http = axios.create({
       baseURL: this.cfg.sidecarUrl,
       headers: { 'X-Sidecar-Secret': this.cfg.sidecarSecret },
-      // Un adjunto grande + conversión ffmpeg + "grabando" humanizado.
-      timeout: 90_000,
       maxBodyLength: 30 * 1024 * 1024,
     });
   }
+
+  /** Un texto humanizado tarda a lo sumo ~12 s (delay + tipeo). */
+  private static readonly TIMEOUT_TEXTO_MS = 30_000;
+  /** Un adjunto grande + conversión ffmpeg + "grabando" humanizado. */
+  private static readonly TIMEOUT_MEDIA_MS = 90_000;
 
   get configurado(): boolean {
     return Boolean(this.cfg.sidecarUrl && this.cfg.sidecarSecret);
@@ -63,15 +66,20 @@ export class SidecarClient {
   }
 
   async enviarTexto(to: string, text: string, typing = true): Promise<string | null> {
-    const { data } = await this.http.post('/send', { to, text, typing });
+    const { data } = await this.http.post(
+      '/send',
+      { to, text, typing },
+      { timeout: SidecarClient.TIMEOUT_TEXTO_MS },
+    );
     return data?.id ?? null;
   }
 
   async enviarAudio(to: string, datos: Buffer): Promise<string | null> {
-    const { data } = await this.http.post('/send-audio', {
-      to,
-      base64: datos.toString('base64'),
-    });
+    const { data } = await this.http.post(
+      '/send-audio',
+      { to, base64: datos.toString('base64') },
+      { timeout: SidecarClient.TIMEOUT_MEDIA_MS },
+    );
     return data?.id ?? null;
   }
 
@@ -82,13 +90,11 @@ export class SidecarClient {
     fileName: string,
     caption?: string | null,
   ): Promise<string | null> {
-    const { data } = await this.http.post('/send-file', {
-      to,
-      base64: datos.toString('base64'),
-      mime,
-      fileName,
-      caption: caption ?? null,
-    });
+    const { data } = await this.http.post(
+      '/send-file',
+      { to, base64: datos.toString('base64'), mime, fileName, caption: caption ?? null },
+      { timeout: SidecarClient.TIMEOUT_MEDIA_MS },
+    );
     return data?.id ?? null;
   }
 

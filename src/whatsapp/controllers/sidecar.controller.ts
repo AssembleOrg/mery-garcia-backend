@@ -9,8 +9,10 @@ import { BotService, EntranteSidecar } from '../bot.service';
  * Entrada de mensajes desde el sidecar. Sin JWT: lo autentica el secret
  * compartido en `X-Sidecar-Secret`, comparado en tiempo constante.
  *
- * Siempre responde 200: si acá algo falla, que el sidecar no reintente en
- * loop; el error queda en el log.
+ * Responde 200 enseguida y procesa aparte: responder al bot lleva segundos
+ * (espera de ráfaga, clasificador, tipeo humanizado) y el sidecar no tiene
+ * por qué quedarse colgado esperando. Si algo falla queda en el log; el
+ * sidecar no reintenta.
  */
 @ApiExcludeController()
 @Controller('whatsapp/sidecar')
@@ -33,11 +35,9 @@ export class SidecarController {
       this.logger.warn('Entrante con secret inválido, ignorado');
       return { ok: true };
     }
-    try {
-      await this.bot.procesarEntrante(body);
-    } catch (error) {
-      this.logger.error(`Error procesando entrante: ${(error as Error).message}`, (error as Error).stack);
-    }
+    void this.bot.procesarEntrante(body).catch((error: Error) => {
+      this.logger.error(`Error procesando entrante: ${error.message}`, error.stack);
+    });
     return { ok: true };
   }
 
