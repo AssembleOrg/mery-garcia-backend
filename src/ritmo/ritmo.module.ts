@@ -15,6 +15,7 @@ import { RitmoWebhooksService } from './webhooks/webhooks.service';
 import { RitmoWebhookEvento } from './webhooks/entities/RitmoWebhookEvento.entity';
 import { EventosService } from './eventos/eventos.service';
 import { ReportesController } from './reportes/reportes.controller';
+import { PendientesController } from './pendientes/pendientes.controller';
 import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
 
 @Module({
@@ -28,6 +29,7 @@ import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
     KioscoController,
     RitmoWebhooksController,
     ReportesController,
+    PendientesController,
   ],
   providers: [
     RitmoService,
