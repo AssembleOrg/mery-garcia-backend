@@ -44,9 +44,14 @@ export interface RitmoErrorBody {
 
 export interface FicharDto {
   kind: PunchKind;
-  latitude: number;
-  longitude: number;
-  accuracyMeters: number;
+  /**
+   * Ubicación medida por el aparato. Va en null cuando no hay: Ritmo decide
+   * según la regla de la empresa (rechaza, o entra a revisión).
+   */
+  latitude: number | null;
+  longitude: number | null;
+  /** Precisión que reporta el aparato, en metros. */
+  accuracyMeters: number | null;
   /** ISO 8601 UTC. Opcional; por defecto el instante del servidor. */
   happenedAt?: string;
 }
