@@ -12,6 +12,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     cors: true,
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+    // Deja el cuerpo sin parsear en req.rawBody. Lo necesita el webhook de
+    // Ritmo: la firma se calcula sobre los bytes exactos que llegaron, y un
+    // JSON reparseado ya no da el mismo HMAC.
+    rawBody: true,
   });
 
   const globalPrefix = 'api';
