@@ -5,6 +5,7 @@ import { Repository } from 'typeorm';
 import type { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { RitmoWebhookEvento } from './entities/RitmoWebhookEvento.entity';
 import { verificarFirmaRitmo } from './firma';
+import { EventosService } from '../eventos/eventos.service';
 
 /** Sobre de una entrega de Ritmo. */
 export interface EntregaRitmo {
@@ -40,6 +41,7 @@ export class RitmoWebhooksService {
     config: ConfigService,
     @InjectRepository(RitmoWebhookEvento)
     private readonly repo: Repository<RitmoWebhookEvento>,
+    private readonly eventos: EventosService,
   ) {
     this.secreto = config.get<string>('ritmo.webhookSecret');
   }
@@ -85,7 +87,7 @@ export class RitmoWebhooksService {
     try {
       switch (entrega.event) {
         case 'fichaje.registrado':
-          this.alFichar(entrega.data as unknown as FichajeRegistrado);
+          await this.alFichar(entrega.data as unknown as FichajeRegistrado);
           break;
         case 'webhook.prueba':
           this.logger.log(`Webhook de prueba recibido: ${entrega.id}`);
@@ -103,12 +105,17 @@ export class RitmoWebhooksService {
     }
   }
 
-  private alFichar(marca: FichajeRegistrado): void {
+  private async alFichar(marca: FichajeRegistrado): Promise<void> {
     const detalle = `${marca.kind} de ${marca.userId} a las ${marca.happenedAt}`;
     if (marca.review === 'PENDIENTE') {
       this.logger.warn(`Fichaje a revisar: ${detalle} — ${marca.reviewReason}`);
-      return;
+    } else {
+      this.logger.log(`Fichaje: ${detalle}`);
     }
-    this.logger.log(`Fichaje: ${detalle}`);
+
+    // Empuja a las pantallas conectadas. Las marcas a revisar también se
+    // avisan: la persona igual entró o salió, y la pantalla lo tiene que
+    // reflejar aunque después alguien revise la marca.
+    await this.eventos.publicarFichaje(marca);
   }
 }

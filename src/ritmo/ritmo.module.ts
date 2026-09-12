@@ -9,11 +9,18 @@ import { KioscoService } from './kiosco/kiosco.service';
 import { RitmoWebhooksController } from './webhooks/webhooks.controller';
 import { RitmoWebhooksService } from './webhooks/webhooks.service';
 import { RitmoWebhookEvento } from './webhooks/entities/RitmoWebhookEvento.entity';
+import { EventosService } from './eventos/eventos.service';
 
 @Module({
   imports: [ConfigModule, TypeOrmModule.forFeature([RitmoWebhookEvento])],
   controllers: [RitmoController, KioscoController, RitmoWebhooksController],
-  providers: [RitmoService, TurnosService, KioscoService, RitmoWebhooksService],
-  exports: [RitmoService, TurnosService, KioscoService],
+  providers: [
+    RitmoService,
+    TurnosService,
+    KioscoService,
+    RitmoWebhooksService,
+    EventosService,
+  ],
+  exports: [RitmoService, TurnosService, KioscoService, EventosService],
 })
 export class RitmoModule {}

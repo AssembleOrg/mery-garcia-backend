@@ -1,5 +1,7 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Sse } from '@nestjs/common';
+import { Observable } from 'rxjs';
 import { RitmoService } from './ritmo.service';
+import { EventosService, MensajeSse } from './eventos/eventos.service';
 
 /**
  * Presentismo, y sólo presentismo: quién está, quién falta y las horas de la
@@ -11,12 +13,27 @@ import { RitmoService } from './ritmo.service';
  */
 @Controller('ritmo')
 export class RitmoController {
-  constructor(private readonly ritmo: RitmoService) {}
+  constructor(
+    private readonly ritmo: RitmoService,
+    private readonly eventos: EventosService,
+  ) {}
 
   /** Tablero de ahora: quién está fichado, quién llega tarde, quién falta. */
   @Get('hoy')
   hoy() {
     return this.ritmo.consolaHoy();
+  }
+
+  /**
+   * Pantalla en vivo: se emite un evento apenas alguien entra o sale.
+   *
+   * El evento trae el detalle para poder mostrar un aviso, pero la pantalla
+   * debería releer `GET /api/ritmo/hoy` al recibirlo: así queda bien aunque se
+   * haya perdido algún evento por una reconexión.
+   */
+  @Sse('eventos')
+  streamEventos(): Observable<MensajeSse> {
+    return this.eventos.stream();
   }
 
   /** Asistencia de la semana. `desde` = lunes (YYYY-MM-DD); sin él, la actual. */
