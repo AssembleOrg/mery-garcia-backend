@@ -162,6 +162,24 @@ export class RitmoService {
     });
   }
 
+  /**
+   * Mueve un turno a otro día o a otra persona.
+   *
+   * Ritmo no deja cambiarle la hora a un turno: sólo el día y la persona. Para
+   * corregir el horario hay que borrar y volver a crear (ver HorariosService).
+   */
+  moverTurno(shiftId: string, cambios: { day?: string; userId?: string | null }): Promise<unknown> {
+    return this.request('post', '/api/consola/planificador', {
+      body: { shiftId, ...cambios },
+    });
+  }
+
+  borrarTurno(shiftId: string): Promise<unknown> {
+    return this.request('post', '/api/consola/planificador', {
+      body: { deleteShift: shiftId },
+    });
+  }
+
   listarIncidencias(): Promise<unknown> {
     return this.request('get', '/api/consola/incidencias');
   }

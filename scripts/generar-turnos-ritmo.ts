@@ -1,21 +1,25 @@
 /**
- * Genera y publica una semana de turnos en Ritmo desde el patrón fijo del
- * equipo. El cron lo hace solo los domingos; esto es para arrancar o para
- * rehacer una semana puntual.
+ * Genera y publica una semana de turnos desde el patrón. El cron del domingo
+ * lo hace solo; esto es para arrancar o para rehacer una semana puntual.
+ *
+ * Le pega al backend en vez de levantar Nest: así no abre una conexión con
+ * synchronize contra la base de producción sólo para correr un script.
  *
  * Uso:
  *   pnpm run turnos:ritmo              → la semana que viene
- *   pnpm run turnos:ritmo 2026-09-14   → esa semana (tiene que ser lunes)
+ *   pnpm run turnos:ritmo 2026-09-28   → esa semana (tiene que ser lunes)
+ *
+ * Con API_URL=http://localhost:3000 apunta al backend local.
  */
-import { ConfigService } from '@nestjs/config';
 import { config } from 'dotenv';
 import { join } from 'path';
 
 config({ path: join(__dirname, '..', '.env') });
 
-import { RitmoService } from '../src/ritmo/ritmo.service';
-import { TurnosService } from '../src/ritmo/turnos/turnos.service';
 import { diaIso, lunesDeLaSemanaQueViene } from '../src/ritmo/turnos/fechas';
+
+const API_URL =
+  process.env.API_URL ?? 'https://mery-garcia-backend-production.up.railway.app';
 
 async function main(): Promise<void> {
   const semana = process.argv[2] ?? lunesDeLaSemanaQueViene();
@@ -27,22 +31,24 @@ async function main(): Promise<void> {
     throw new Error(`${semana} no es lunes. La semana de Ritmo arranca el lunes.`);
   }
 
-  const configService = new ConfigService({
-    ritmo: {
-      baseUrl: process.env.RITMO_BASE_URL,
-      apiKey: process.env.RITMO_API_KEY,
-    },
+  const res = await fetch(`${API_URL}/api/ritmo/horarios/generar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ weekStart: semana }),
   });
 
-  const turnos = new TurnosService(new RitmoService(configService));
-  const resumen = await turnos.generarSemana(semana);
+  const cuerpo = await res.json();
+  if (!res.ok) {
+    throw new Error(`${res.status}: ${cuerpo?.message ?? JSON.stringify(cuerpo)}`);
+  }
 
+  const resumen = cuerpo.data ?? cuerpo;
   console.log(`\nSemana del ${resumen.weekStart}`);
   console.log(`  creados    : ${resumen.creados}`);
   console.log(`  ya estaban : ${resumen.yaEstaban}`);
   console.log(`  publicados : ${resumen.publicados}`);
-  if (resumen.sinResolver.length) {
-    console.log(`  SIN RESOLVER (no existen en Ritmo): ${resumen.sinResolver.join(', ')}`);
+  if (resumen.sinResolver?.length) {
+    console.log(`  SIN RESOLVER: ${resumen.sinResolver.join(', ')}`);
   }
   console.log();
 }

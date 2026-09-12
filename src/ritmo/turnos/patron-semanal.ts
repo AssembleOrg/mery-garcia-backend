@@ -1,35 +1,31 @@
+import { AlternanciaTurno } from './entities/PatronTurno.entity';
+
 /**
- * Horario fijo del equipo. Ritmo no repite semanas: cada turno se carga uno por
- * uno. Este patrón es la fuente de verdad y el generador arma la semana desde
- * acá, así nadie carga turnos a mano todas las semanas.
- *
- * Las personas se identifican por email porque es lo que se lee; el generador
- * lo resuelve contra el personal de Ritmo y avisa si alguno no existe.
+ * Horario con el que arranca el equipo. Es SEMILLA: se carga una sola vez en
+ * `ritmo_patron_turno` y a partir de ahí el patrón vive en la base y se edita
+ * desde la pantalla de horarios. Cambiar este archivo no cambia nada de lo ya
+ * cargado.
  */
 
 /** 1 = lunes … 7 = domingo (ISO). */
 export type DiaIso = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-export interface TramoTurno {
+export interface TramoSemilla {
   dia: DiaIso;
   /** "HH:MM" en la zona de la empresa. */
   desde: string;
   hasta: string;
+  alternancia?: AlternanciaTurno;
 }
 
-export interface PatronPersona {
+export interface PersonaSemilla {
   email: string;
   nombre: string;
-  tramos: TramoTurno[];
-  /**
-   * Sábado que alterna de duración: el turno del sábado sale de `tramos` en las
-   * semanas "largas" y de `alterna` en las del medio. Sólo lo usa Luna.
-   */
-  alterna?: { dia: DiaIso; desde: string; hasta: string };
+  tramos: TramoSemilla[];
 }
 
 /** Jornada corrida: no se descuenta pausa. */
-export const BREAK_MINUTES = 0;
+export const PAUSA_MINUTOS = 0;
 
 const MAR = 2 as const;
 const MIE = 3 as const;
@@ -38,12 +34,13 @@ const VIE = 5 as const;
 const SAB = 6 as const;
 
 /**
- * Sábado tomado como "largo" (hasta las 18). A partir de acá alterna cada 14
- * días: si arranca corrido al revés, mové esta fecha una semana.
+ * Lunes de una semana "A". A partir de acá las semanas alternan A, B, A, B…
+ * Sólo importa para los tramos que no son TODAS (hoy, el sábado de Luna).
+ * Si el sábado largo y el corto salen al revés, mové esta fecha una semana.
  */
-export const ANCLA_SABADO_LARGO = '2026-09-19';
+export const ANCLA_SEMANA_A = '2026-09-14';
 
-export const PATRON_SEMANAL: PatronPersona[] = [
+export const SEMILLA_PATRON: PersonaSemilla[] = [
   {
     email: 'micaela@merygarcia.local',
     nombre: 'Micaela',
@@ -68,9 +65,9 @@ export const PATRON_SEMANAL: PatronPersona[] = [
     nombre: 'Luna García',
     tramos: [
       { dia: MIE, desde: '10:00', hasta: '18:00' },
-      { dia: SAB, desde: '10:00', hasta: '18:00' },
+      { dia: SAB, desde: '10:00', hasta: '18:00', alternancia: AlternanciaTurno.SEMANA_A },
+      { dia: SAB, desde: '10:00', hasta: '15:00', alternancia: AlternanciaTurno.SEMANA_B },
     ],
-    alterna: { dia: SAB, desde: '10:00', hasta: '15:00' },
   },
   {
     // Limpieza antes de abrir. El lunes que a veces viene no se planifica a

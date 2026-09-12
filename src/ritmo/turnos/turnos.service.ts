@@ -1,16 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { RitmoService } from '../ritmo.service';
-import {
-  ANCLA_SABADO_LARGO,
-  BREAK_MINUTES,
-  PATRON_SEMANAL,
-  type PatronPersona,
-  type TramoTurno,
-} from './patron-semanal';
+import { PatronService } from './patron.service';
+import { AlternanciaTurno, PatronTurno } from './entities/PatronTurno.entity';
+import { ANCLA_SEMANA_A } from './patron-semanal';
 import {
   TZ_EMPRESA,
-  aMinutos,
   diferenciaEnSemanas,
   lunesDeLaSemanaQueViene,
   sumarDias,
@@ -26,10 +21,6 @@ interface SemanaPlanificador {
   sites: { id: string; kind: string; name: string }[];
 }
 
-interface PersonalRitmo {
-  people: { id: string; email: string; fullName: string }[];
-}
-
 export interface ResumenGeneracion {
   weekStart: string;
   creados: number;
@@ -42,7 +33,10 @@ export interface ResumenGeneracion {
 export class TurnosService {
   private readonly logger = new Logger(TurnosService.name);
 
-  constructor(private readonly ritmo: RitmoService) {}
+  constructor(
+    private readonly ritmo: RitmoService,
+    private readonly patron: PatronService,
+  ) {}
 
   /**
    * Domingo a la noche: deja armada y publicada la semana que arranca mañana.
@@ -64,9 +58,15 @@ export class TurnosService {
     }
   }
 
+  /** Semana A o B, para los tramos que alternan. */
+  esSemanaA(weekStart: string): boolean {
+    return Math.abs(diferenciaEnSemanas(ANCLA_SEMANA_A, weekStart)) % 2 === 0;
+  }
+
   /**
-   * Arma la semana desde el patrón fijo y la publica. Es repetible: lo que ya
-   * está cargado no se duplica, así se puede volver a correr sin miedo.
+   * Arma la semana desde el patrón y la publica. Es repetible: lo que ya está
+   * cargado no se duplica, así que un turno corregido a mano sobrevive a la
+   * siguiente corrida.
    */
   async generarSemana(weekStart: string): Promise<ResumenGeneracion> {
     const semana = (await this.ritmo.obtenerPlanificador(
@@ -79,9 +79,9 @@ export class TurnosService {
       throw new Error('La empresa no tiene ninguna sede cargada en Ritmo.');
     }
 
-    const personal = (await this.ritmo.listarPersonal()) as PersonalRitmo;
-    const porEmail = new Map(
-      personal.people.map((p) => [p.email.toLowerCase(), p.id]),
+    const tramos = this.tramosDeLaSemana(
+      await this.patron.tramosActivos(),
+      weekStart,
     );
     const ocupadas = new Map(
       semana.rows
@@ -97,39 +97,39 @@ export class TurnosService {
       sinResolver: [],
     };
 
-    for (const persona of PATRON_SEMANAL) {
-      const userId = porEmail.get(persona.email.toLowerCase());
-      if (!userId) {
-        resumen.sinResolver.push(persona.email);
-        this.logger.warn(
-          `${persona.nombre} (${persona.email}) no existe en Ritmo: se saltea`,
-        );
+    for (const tramo of tramos) {
+      if (!ocupadas.has(tramo.ritmoUserId)) {
+        // La persona ya no está en Ritmo (o quedó inactiva): se avisa una vez
+        // y su tramo se saltea, en vez de romper toda la generación.
+        if (!resumen.sinResolver.includes(tramo.nombre)) {
+          resumen.sinResolver.push(tramo.nombre);
+          this.logger.warn(`${tramo.nombre} no aparece en Ritmo: se saltea`);
+        }
         continue;
       }
 
-      const celdas = ocupadas.get(userId) ?? {};
+      const dia = sumarDias(weekStart, tramo.diaIso - 1);
+      const celdas = ocupadas.get(tramo.ritmoUserId) ?? {};
 
-      for (const tramo of this.tramosDeLaSemana(persona, weekStart)) {
-        const dia = sumarDias(weekStart, tramo.dia - 1);
-
-        // Ya hay algo cargado ese día para esa persona: no se pisa. Si alguien
-        // ajustó el turno a mano, el generador lo respeta.
-        if ((celdas[dia]?.length ?? 0) > 0) {
-          resumen.yaEstaban += 1;
-          continue;
-        }
-
-        await this.ritmo.crearTurnos({
-          userId,
-          day: dia,
-          worksiteId: sede.id,
-          startsMinute: aMinutos(tramo.desde),
-          endsMinute: aMinutos(tramo.hasta),
-          breakMinutes: BREAK_MINUTES,
-          templateId: null,
-        });
-        resumen.creados += 1;
+      // Ya hay algo ese día para esa persona: no se pisa.
+      if ((celdas[dia]?.length ?? 0) > 0) {
+        resumen.yaEstaban += 1;
+        continue;
       }
+
+      await this.ritmo.crearTurnos({
+        userId: tramo.ritmoUserId,
+        day: dia,
+        worksiteId: sede.id,
+        startsMinute: tramo.desdeMinuto,
+        endsMinute: tramo.hastaMinuto,
+        breakMinutes: tramo.pausaMinutos,
+        templateId: null,
+      });
+      resumen.creados += 1;
+
+      // Se marca la celda para que dos tramos del mismo día no se pisen entre sí.
+      celdas[dia] = [...(celdas[dia] ?? []), { generado: true }];
     }
 
     const publicado = await this.ritmo.publicarSemana(weekStart);
@@ -137,24 +137,18 @@ export class TurnosService {
     return resumen;
   }
 
-  /**
-   * Los tramos de esa semana. El sábado por medio se resuelve acá: en las
-   * semanas del medio el turno alterno reemplaza al del mismo día.
-   */
+  /** Los tramos que corren esa semana, resolviendo la alternancia A/B. */
   private tramosDeLaSemana(
-    persona: PatronPersona,
+    tramos: PatronTurno[],
     weekStart: string,
-  ): TramoTurno[] {
-    if (!persona.alterna) return persona.tramos;
-
-    const anclaLunes = sumarDias(ANCLA_SABADO_LARGO, -5);
-    const esSemanaLarga =
-      Math.abs(diferenciaEnSemanas(anclaLunes, weekStart)) % 2 === 0;
-    if (esSemanaLarga) return persona.tramos;
-
-    const { dia, desde, hasta } = persona.alterna;
-    return persona.tramos.map((tramo) =>
-      tramo.dia === dia ? { dia, desde, hasta } : tramo,
+  ): PatronTurno[] {
+    const esA = this.esSemanaA(weekStart);
+    return tramos.filter(
+      (t) =>
+        t.alternancia === AlternanciaTurno.TODAS ||
+        (esA
+          ? t.alternancia === AlternanciaTurno.SEMANA_A
+          : t.alternancia === AlternanciaTurno.SEMANA_B),
     );
   }
 }
