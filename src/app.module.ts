@@ -9,6 +9,7 @@ import supabaseConfig from './config/supabase.config';
 import serverConfig from './config/server.config';
 import postgresDbConfig from './config/postgresDb.config';
 import digitalOceanConfig from './config/digitalOcean.config';
+import ritmoConfig from './config/ritmo.config';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -22,13 +23,20 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
 import { ConfigModule as SistemaConfigModule } from './config/config.module';
 import { CommonModule } from './common/common.module';
 import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.module';
+import { RitmoModule } from './ritmo/ritmo.module';
 
 @Module({
   imports: [
     // Configuración global de .env
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [supabaseConfig, serverConfig, postgresDbConfig, digitalOceanConfig],
+      load: [
+        supabaseConfig,
+        serverConfig,
+        postgresDbConfig,
+        digitalOceanConfig,
+        ritmoConfig,
+      ],
     }),
 
     // TypeORM dinámico usando sólo POSTGRES_URL y un solo glob de entidades
@@ -67,6 +75,7 @@ import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.modul
     SistemaConfigModule,
     CommonModule,
     PrepagoGuardadoModule,
+    RitmoModule,
   ],
   controllers: [AppController],
   providers: [
