@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter } from './errors/all-exceptions.filter';
@@ -9,14 +10,19 @@ import * as hpp from 'hpp';
 import { TransformInterceptor } from './interceptors/transform.interceptor';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: true,
     logger: ['error', 'warn', 'log', 'debug', 'verbose'],
     // Deja el cuerpo sin parsear en req.rawBody. Lo necesita el webhook de
     // Ritmo: la firma se calcula sobre los bytes exactos que llegaron, y un
     // JSON reparseado ya no da el mismo HMAC.
     rawBody: true,
+    // El parser se registra abajo con un límite más alto: el sidecar de
+    // WhatsApp manda los adjuntos (audios, fotos) en base64 dentro del JSON.
+    bodyParser: false,
   });
+  app.useBodyParser('json', { limit: '25mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '25mb' });
 
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);

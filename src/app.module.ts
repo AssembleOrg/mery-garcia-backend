@@ -10,6 +10,7 @@ import serverConfig from './config/server.config';
 import postgresDbConfig from './config/postgresDb.config';
 import digitalOceanConfig from './config/digitalOcean.config';
 import ritmoConfig from './config/ritmo.config';
+import whatsappConfig from './config/whatsapp.config';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -24,6 +25,7 @@ import { ConfigModule as SistemaConfigModule } from './config/config.module';
 import { CommonModule } from './common/common.module';
 import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.module';
 import { RitmoModule } from './ritmo/ritmo.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { RitmoModule } from './ritmo/ritmo.module';
         postgresDbConfig,
         digitalOceanConfig,
         ritmoConfig,
+        whatsappConfig,
       ],
     }),
 
@@ -76,6 +79,7 @@ import { RitmoModule } from './ritmo/ritmo.module';
     CommonModule,
     PrepagoGuardadoModule,
     RitmoModule,
+    WhatsappModule,
   ],
   controllers: [AppController],
   providers: [
