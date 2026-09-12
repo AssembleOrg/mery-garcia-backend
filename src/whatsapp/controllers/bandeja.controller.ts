@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -116,7 +117,7 @@ export class BandejaController {
     @UploadedFile() archivo: Express.Multer.File | undefined,
     @Body() body: { caption?: string; duracionSegundos?: string },
   ) {
-    if (!archivo) throw new Error('Falta el archivo.');
+    if (!archivo) throw new BadRequestException('Falta el archivo.');
     const duracion = Number(body?.duracionSegundos);
     return this.bandeja.enviarAdjunto(
       id,
