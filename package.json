@@ -30,7 +30,8 @@
     "fix-egresos-timestamps": "ts-node -r tsconfig-paths/register scripts/fix-egresos-timestamps.ts",
     "eliminar-movimiento": "ts-node -r tsconfig-paths/register scripts/eliminar-movimiento.ts",
     "comisiones-enero": "ts-node -r tsconfig-paths/register scripts/comisiones-enero.ts",
-    "turnos:ritmo": "ts-node -r tsconfig-paths/register scripts/generar-turnos-ritmo.ts"
+    "turnos:ritmo": "ts-node -r tsconfig-paths/register scripts/generar-turnos-ritmo.ts",
+    "guias": "bash scripts/generar-guias.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.839.0",

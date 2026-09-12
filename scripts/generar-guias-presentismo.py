@@ -5,8 +5,10 @@ Son dos documentos y no uno a propósito: el del equipo se reparte entre todas,
 y el de Mery lleva la contraseña de una cuenta que aprueba, rechaza y edita
 horarios. Mezclarlos convertiría esa contraseña en una credencial compartida.
 
-Uso:
-    python3 scripts/generar-guias-presentismo.py [carpeta_de_salida]
+Se corre con `pnpm run guias`, que prepara el entorno de Python la primera
+vez. Necesita reportlab, que no viene con el sistema:
+
+    MERY_PASS='su-contrasena' pnpm run guias
 """
 
 import sys

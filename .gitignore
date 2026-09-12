@@ -60,3 +60,4 @@ context.md
 
 # PDFs generados (se rehacen con scripts/generar-guias-presentismo.py)
 reportes/
+scripts/.venv/
