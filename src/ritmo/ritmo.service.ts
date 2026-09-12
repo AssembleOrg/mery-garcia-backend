@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import {
+  AsistenciaRitmo,
   CrearPersonaDto,
   FicharDto,
   LiquidacionParams,
@@ -186,6 +187,25 @@ export class RitmoService {
 
   resolverIncidencias(dto: ResolverIncidenciasDto): Promise<unknown> {
     return this.request('post', '/api/consola/incidencias', { body: dto });
+  }
+
+  /**
+   * Asistencia del período: una fila por persona y por día, con entrada,
+   * salida, pausas y en qué estado quedó la marca. Incluye lo que está a
+   * revisión, que es lo que la liquidación deja afuera.
+   */
+  asistencia(params: {
+    desde: string;
+    hasta: string;
+    personas?: string[];
+  }): Promise<AsistenciaRitmo> {
+    return this.request('get', '/api/consola/asistencia', {
+      params: {
+        desde: params.desde,
+        hasta: params.hasta,
+        ...(params.personas?.length ? { personas: params.personas.join(',') } : {}),
+      },
+    });
   }
 
   /** Liquidación de horas por persona y concepto (formato JSON). */

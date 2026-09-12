@@ -79,6 +79,59 @@ export interface ResolverIncidenciasDto {
   decision: IncidenciaDecision;
 }
 
+// ---- Reporte de asistencia (GET /api/consola/asistencia) ----
+
+export type EstadoDia =
+  | 'TRABAJADO'
+  | 'INCOMPLETO'
+  | 'AUSENTE'
+  | 'LICENCIA'
+  | 'SIN_TURNO';
+
+export type RevisionDia = 'VALIDO' | 'PENDIENTE' | 'RECHAZADO';
+
+export interface FilaAsistencia {
+  userId: string;
+  fullName: string;
+  employeeCode: string | null;
+  /** YYYY-MM-DD en la zona de la empresa. */
+  day: string;
+  /** "HH:MM" del turno planificado, si había. */
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  plannedMinutes: number;
+  checkIn: string | null;
+  checkOut: string | null;
+  breakMinutes: number;
+  workedMinutes: number;
+  /** Negativo = trabajó menos de lo planificado. */
+  balanceMinutes: number;
+  lateMinutes: number;
+  punches: number;
+  state: EstadoDia;
+  review: RevisionDia | null;
+  reviewReason: string | null;
+  absenceKind: string | null;
+  absenceStatus: string | null;
+}
+
+export interface AsistenciaRitmo {
+  from: string;
+  to: string;
+  timezone: string;
+  rows: FilaAsistencia[];
+  summary: {
+    people: number;
+    days: number;
+    workedMinutes: number;
+    plannedMinutes: number;
+    pendingDays: number;
+    absentDays: number;
+    leaveDays: number;
+    lateDays: number;
+  };
+}
+
 export interface LiquidacionParams {
   /** YYYY-MM-DD */
   desde: string;

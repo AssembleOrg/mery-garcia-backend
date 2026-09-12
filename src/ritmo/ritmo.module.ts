@@ -14,6 +14,8 @@ import { RitmoWebhooksController } from './webhooks/webhooks.controller';
 import { RitmoWebhooksService } from './webhooks/webhooks.service';
 import { RitmoWebhookEvento } from './webhooks/entities/RitmoWebhookEvento.entity';
 import { EventosService } from './eventos/eventos.service';
+import { ReportesController } from './reportes/reportes.controller';
+import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { EventosService } from './eventos/eventos.service';
     HorariosController,
     KioscoController,
     RitmoWebhooksController,
+    ReportesController,
   ],
   providers: [
     RitmoService,
@@ -34,6 +37,7 @@ import { EventosService } from './eventos/eventos.service';
     KioscoService,
     RitmoWebhooksService,
     EventosService,
+    AsistenciaPdfService,
   ],
   exports: [RitmoService, TurnosService, PatronService, KioscoService, EventosService],
 })
