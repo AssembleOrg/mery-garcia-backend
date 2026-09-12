@@ -94,13 +94,16 @@ export class BandejaService {
       );
     }
 
+    // Los joins son many-to-one (una fila por charla): limit/offset directos.
+    // skip/take con un ORDER BY por expresión dispara la consulta en dos
+    // fases de TypeORM, que no sabe seleccionar el CASE.
     qb.orderBy(
       `CASE c.estado WHEN '${EstadoConversacion.ESPERANDO}' THEN 0 ELSE 1 END`,
       'ASC',
     )
       .addOrderBy('c.ultimoMensajeAt', 'DESC', 'NULLS LAST')
-      .skip((pagina - 1) * porPagina)
-      .take(porPagina);
+      .offset((pagina - 1) * porPagina)
+      .limit(porPagina);
 
     const [filas, total] = await qb.getManyAndCount();
     const items = await this.aDtos(filas);
@@ -134,7 +137,7 @@ export class BandejaService {
       .leftJoinAndSelect('m.operador', 'operador')
       .where('m.conversacionId = :id', { id })
       .orderBy('m.createdAt', 'DESC')
-      .take(take + 1);
+      .limit(take + 1);
     if (antesDe && !Number.isNaN(Date.parse(antesDe))) {
       qb.andWhere('m.createdAt < :antesDe', { antesDe: new Date(antesDe) });
     }
@@ -304,11 +307,13 @@ export class BandejaService {
   private async aDtos(filas: WhatsappConversacion[]): Promise<ConversacionDto[]> {
     if (filas.length === 0) return [];
     const clientes = await this.contactos.clientesDe(filas.map((c) => c.contacto));
+    // distinctOn no entrecomilla: sin las comillas Postgres baja el nombre a
+    // minúsculas y no encuentra la columna camelCase.
     const ultimos = await this.mensajesRepo
       .createQueryBuilder('m')
-      .distinctOn(['m.conversacionId'])
+      .distinctOn(['"m"."conversacionId"'])
       .where('m.conversacionId IN (:...ids)', { ids: filas.map((c) => c.id) })
-      .orderBy('m.conversacionId')
+      .orderBy('"m"."conversacionId"')
       .addOrderBy('m.createdAt', 'DESC')
       .getMany();
     const ultimoPor = new Map(ultimos.map((m) => [m.conversacionId, m]));
