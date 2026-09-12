@@ -7,9 +7,14 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { CrearTurnoDto, EditarTurnoDto, HorariosService } from './horarios.service';
 import { PatronService, TramoDto } from './patron.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../guards/roles.guard';
+import { Roles } from '../../decorators/roles.decorator';
+import { RolPersonal } from '../../enums/RolPersonal.enum';
 
 /**
  * Horarios del equipo, en dos capas:
@@ -20,6 +25,7 @@ import { PatronService, TramoDto } from './patron.service';
  *   Tocar un turno cambia ese día y nada más.
  */
 @Controller('ritmo/horarios')
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class HorariosController {
   constructor(
     private readonly horarios: HorariosService,
@@ -29,11 +35,13 @@ export class HorariosController {
   // ------------------------------------------------------- semana y turnos
 
   /** Grilla de la semana. `desde` tiene que ser lunes (YYYY-MM-DD). */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Get('semana')
   semana(@Query('desde') desde: string) {
     return this.horarios.semana(desde);
   }
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Post('turno')
   crearTurno(@Body() dto: CrearTurnoDto) {
     return this.horarios.crearTurno(dto);
@@ -43,23 +51,27 @@ export class HorariosController {
    * Cambia un turno: de día, de persona o de horario. Si cambia el horario, el
    * turno se rehace (Ritmo no deja editarle la hora) y queda con otro id.
    */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Patch('turno/:shiftId')
   editarTurno(@Param('shiftId') shiftId: string, @Body() cambios: EditarTurnoDto) {
     return this.horarios.editarTurno(shiftId, cambios);
   }
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Delete('turno/:shiftId')
   borrarTurno(@Param('shiftId') shiftId: string) {
     return this.horarios.borrarTurno(shiftId);
   }
 
   /** Publicar: recién ahí el equipo ve la semana en su teléfono. */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Post('publicar')
   publicar(@Body() body: { weekStart: string }) {
     return this.horarios.publicar(body.weekStart);
   }
 
   /** Rearma la semana desde el patrón sin pisar lo que ya está cargado. */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Post('generar')
   generar(@Body() body: { weekStart: string }) {
     return this.horarios.generarDesdePatron(body.weekStart);
@@ -67,27 +79,32 @@ export class HorariosController {
 
   // ---------------------------------------------------------------- patrón
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Get('patron')
   verPatron() {
     return this.patron.porPersona();
   }
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Post('patron')
   crearTramo(@Body() dto: TramoDto) {
     return this.patron.crearTramo(dto);
   }
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Patch('patron/:id')
   editarTramo(@Param('id') id: string, @Body() cambios: Partial<TramoDto>) {
     return this.patron.actualizarTramo(id, cambios);
   }
 
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Delete('patron/:id')
   borrarTramo(@Param('id') id: string) {
     return this.patron.borrarTramo(id);
   }
 
   /** Carga el horario inicial. No hace nada si el patrón ya tiene algo. */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Post('patron/sembrar')
   sembrar() {
     return this.patron.sembrarSiEstaVacio();
