@@ -35,6 +35,10 @@ export class SidecarController {
       this.logger.warn('Entrante con secret inválido, ignorado');
       return { ok: true };
     }
+    if (body?.kind === 'escribiendo') {
+      void this.bot.clientaEscribiendo(body.chatJid).catch(() => undefined);
+      return { ok: true };
+    }
     void this.bot.procesarEntrante(body).catch((error: Error) => {
       this.logger.error(`Error procesando entrante: ${error.message}`, error.stack);
     });

@@ -62,6 +62,10 @@ export class ContactosService {
     return cambio ? this.contactos.save(contacto) : contacto;
   }
 
+  async porChatJid(chatJid: string): Promise<WhatsappContacto | null> {
+    return this.contactos.findOne({ where: { chatJid } });
+  }
+
   async vincularCliente(contactoId: string, clienteId: string | null): Promise<void> {
     await this.contactos.update({ id: contactoId }, { clienteId });
   }

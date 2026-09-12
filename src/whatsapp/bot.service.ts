@@ -27,7 +27,7 @@ export interface EntranteSidecar {
   phone: string | null;
   pushName: string | null;
   waMessageId: string | null;
-  kind: 'texto' | 'audio' | 'imagen' | 'documento' | 'otro';
+  kind: 'texto' | 'audio' | 'imagen' | 'documento' | 'otro' | 'escribiendo';
   text: string;
   media: { base64: string; mime: string; fileName: string | null; seconds: number | null } | null;
   timestamp: number | null;
@@ -35,6 +35,8 @@ export interface EntranteSidecar {
 
 /** Ventana para juntar una ráfaga ("hola" / "quiero turno" / "para cejas") en una sola consulta. */
 const DEBOUNCE_MS = 2_500;
+/** Si la clienta sigue escribiendo, se espera esto desde el último "escribiendo…". */
+const DEBOUNCE_ESCRIBIENDO_MS = 5_000;
 /** Tope de un adjunto entrante que se guarda. */
 const MAX_ADJUNTO_BYTES = 16 * 1024 * 1024;
 const CHAT_JID_VALIDO = /^[0-9]{5,20}@(s\.whatsapp\.net|lid)$/;
@@ -142,6 +144,26 @@ export class BotService {
       return;
     }
     this.encolar(conv.id, limpio);
+  }
+
+  /**
+   * La clienta está escribiendo: si hay una ráfaga esperando respuesta, se
+   * posterga para no contestar a mitad de una frase partida en varios
+   * mensajes. Sin ráfaga no hace nada (no hay nada que postergar).
+   */
+  async clientaEscribiendo(chatJid: string): Promise<void> {
+    if (!CHAT_JID_VALIDO.test(chatJid) || this.rafagas.size === 0) return;
+    const contacto = await this.contactos.porChatJid(chatJid);
+    if (!contacto) return;
+    const conv = await this.conversaciones.findOne({
+      where: { contactoId: contacto.id, estado: EstadoConversacion.BOT },
+      select: { id: true },
+      order: { createdAt: 'DESC' },
+    });
+    const rafaga = conv && this.rafagas.get(conv.id);
+    if (!rafaga) return;
+    clearTimeout(rafaga.timer);
+    rafaga.timer = setTimeout(() => void this.responder(conv.id), DEBOUNCE_ESCRIBIENDO_MS);
   }
 
   // ─── ráfaga / clasificación ────────────────────────────────────
