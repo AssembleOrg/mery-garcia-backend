@@ -276,9 +276,11 @@ export class BandejaService {
 
   private async marcarLeida(conv: WhatsappConversacion): Promise<void> {
     if (conv.noLeidos > 0) await this.conversaciones.update({ id: conv.id }, { noLeidos: 0 });
+    // createdAt va en el select porque ordena: con take, TypeORM arma una
+    // consulta en dos fases y sólo puede ordenar por columnas seleccionadas.
     const pendientes = await this.mensajesRepo.find({
       where: { conversacionId: conv.id, direccion: DireccionMensaje.ENTRANTE, leidoAvisado: false },
-      select: { id: true, waMessageId: true },
+      select: { id: true, waMessageId: true, createdAt: true },
       order: { createdAt: 'ASC' },
       take: 100,
     });
