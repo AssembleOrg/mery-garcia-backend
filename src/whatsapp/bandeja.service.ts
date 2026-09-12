@@ -275,7 +275,11 @@ export class BandejaService {
   }
 
   private async marcarLeida(conv: WhatsappConversacion): Promise<void> {
-    if (conv.noLeidos > 0) await this.conversaciones.update({ id: conv.id }, { noLeidos: 0 });
+    const teniaNoLeidos = conv.noLeidos > 0;
+    if (teniaNoLeidos) {
+      await this.conversaciones.update({ id: conv.id }, { noLeidos: 0 });
+      conv.noLeidos = 0; // el DTO que se devuelve sale de este objeto
+    }
     // createdAt va en el select porque ordena: con take, TypeORM arma una
     // consulta en dos fases y sólo puede ordenar por columnas seleccionadas.
     const pendientes = await this.mensajesRepo.find({
