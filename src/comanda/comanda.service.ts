@@ -3296,11 +3296,10 @@ export class ComandaService {
         // Subtotal en la moneda nativa del ítem (precio ya viene en ARS o USD)
         const subtotal = (precio * cantidad) - descuento;
 
-        // La moneda depende de la unidad de negocio: cosmetic tattoo = USD,
-        // el resto (estilismo, productos) = ARS. No se convierte ni se mezcla.
-        const esUSD = !!unidadNegocio && UNIDADES_USD.includes(unidadNegocio);
-
         if (tipo === TipoProductoServicio.SERVICIO) {
+          // Servicios: la moneda depende de la unidad de negocio.
+          // Cosmetic tattoo = USD, el resto (estilismo) = ARS.
+          const esUSD = !!unidadNegocio && UNIDADES_USD.includes(unidadNegocio);
           if (esUSD) {
             trabajadorData.serviciosUSD += subtotal;
             totalServiciosUSD += subtotal;
@@ -3309,12 +3308,22 @@ export class ComandaService {
             totalServiciosARS += subtotal;
           }
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
-          if (esUSD) {
-            trabajadorData.productosUSD += subtotal;
-            totalProductosUSD += subtotal;
-          } else {
+          // Productos: la unidad de negocio no distingue moneda (todos son
+          // "Productos"). La mayoría se venden en dólares (after care, tintes,
+          // brow cement, kit pinzas, etc.). Criterio: precio congelado /
+          // precioFijoARS => pesos; y los precios grandes (>=1000) también son
+          // pesos aunque estén mal cargados como no congelados (ej. BROW
+          // STYLING $180-200 mil). El resto (no congelado, precio chico) = USD.
+          const esCongelado = item.productoServicio?.esPrecioCongelado === true;
+          const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+          const esProductoARS =
+            esCongelado || precioFijoARS > 0 || precio >= 1000;
+          if (esProductoARS) {
             trabajadorData.productosARS += subtotal;
             totalProductosARS += subtotal;
+          } else {
+            trabajadorData.productosUSD += subtotal;
+            totalProductosUSD += subtotal;
           }
         }
       });
