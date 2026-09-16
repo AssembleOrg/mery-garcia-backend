@@ -20,7 +20,7 @@ export class PendientesController {
   constructor(private readonly ritmo: RitmoService) {}
 
   /** La bandeja, con el conteo por tipo. */
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.PRESENTISMO)
   @Get()
   bandeja() {
     return this.ritmo.listarIncidencias();
@@ -30,7 +30,7 @@ export class PendientesController {
    * Aprueba o rechaza. Acepta varios ids de una: aprobar diez fichajes
    * dudosos de la misma tarde es un solo gesto, no diez.
    */
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.PRESENTISMO)
   @Post('resolver')
   resolver(@Body() dto: { ids: string[]; decision: IncidenciaDecision }) {
     return this.ritmo.resolverIncidencias(dto);

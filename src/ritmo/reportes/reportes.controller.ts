@@ -20,7 +20,7 @@ export class ReportesController {
   ) {}
 
   /** Los datos crudos, para pintar la tabla en pantalla. */
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.PRESENTISMO)
   @Get('asistencia')
   asistencia(
     @Query('desde') desde: string,
@@ -40,7 +40,7 @@ export class ReportesController {
    * Se responde con `res` directamente y no con un return: lo que se manda es
    * un archivo, no el envelope JSON que el interceptor le pone a todo lo demás.
    */
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.PRESENTISMO)
   @Get('asistencia.pdf')
   @Header('Content-Type', 'application/pdf')
   async asistenciaPdf(
