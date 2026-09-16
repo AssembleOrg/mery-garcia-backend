@@ -51,7 +51,14 @@ export class AuthController {
     return result;
   }
 
+  /**
+   * Alta de usuarios: sólo un admin logueado. Antes era público y cualquiera
+   * podía crearse una cuenta (hasta de encargado) sin entrar al sistema.
+   */
   @Post('register')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(RolPersonal.ADMIN)
+  @ApiBearerAuth('access-token')
   @Audit({ 
     action: 'CREATE', 
     entityType: 'Auth',
@@ -59,9 +66,10 @@ export class AuthController {
     sensitiveFields: ['password', 'token', 'refreshToken', 'hash', 'salt']
   })
   @ApiOperation({
-    summary: 'Registrar nuevo usuario (solo administradores Reba Puto)',
+    summary: 'Registrar nuevo usuario (sólo administradores)',
   })
   @ApiResponse({ status: 201, description: 'Usuario registrado exitosamente' })
+  @ApiResponse({ status: 401, description: 'Sin sesión' })
   @ApiResponse({ status: 403, description: 'Acceso denegado' })
   @ApiResponse({ status: 409, description: 'Email ya registrado' })
   async register(@Body() registerDto: RegisterDto) {
