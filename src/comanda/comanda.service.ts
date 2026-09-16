@@ -3193,6 +3193,7 @@ export class ComandaService {
         'items.trabajador',
         'items.productoServicio',
         'items.productoServicio.unidadNegocio',
+        'prepagoUSD',
       ],
     });
 
@@ -3216,8 +3217,62 @@ export class ComandaService {
     let totalProductosARS = 0;
     let totalProductosUSD = 0;
 
+    // Clasificación de cada ítem en su moneda "de lista":
+    // - Servicio: USD si la unidad es cosmetic tattoo, si no ARS.
+    // - Producto: ARS si está congelado / tiene precioFijoARS / precio >= 1000
+    //   (mal cargado como no congelado, ej. BROW STYLING); si no, lista en USD.
+    const esServicioUSD = (item: ItemComanda): boolean =>
+      item.productoServicio?.tipo === TipoProductoServicio.SERVICIO &&
+      !!item.productoServicio?.unidadNegocio?.nombre &&
+      UNIDADES_USD.includes(item.productoServicio.unidadNegocio.nombre);
+
+    const esProductoListaARS = (item: ItemComanda, precio: number): boolean => {
+      const esCongelado = item.productoServicio?.esPrecioCongelado === true;
+      const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+      return esCongelado || precioFijoARS > 0 || precio >= 1000;
+    };
+
+    // Precio base del ítem: item.precio crudo, en su moneda de lista. Fallback
+    // a precioFijoARS solo cuando el ítem se cargó con precio 0.
+    const precioBaseItem = (item: ItemComanda): number => {
+      const precio = Number(item.precio ?? 0);
+      if (precio !== 0) return precio;
+      const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
+      return precioFijoARS > 0 ? precioFijoARS : 0;
+    };
+
+    const subtotalItem = (item: ItemComanda): number =>
+      precioBaseItem(item) * Number(item.cantidad ?? 1) -
+      Number(item.descuento ?? 0);
+
     // Procesar cada comanda y sus items
     comandas.forEach((comanda) => {
+      // Los productos de lista en USD (tintes, after care, brow cement, kit
+      // pinzas...) muchas veces se cobran en pesos al valorDolar de la
+      // comanda. Los pagos se guardan a nivel comanda, sin vínculo por ítem,
+      // así que se infiere: los dólares efectivamente cobrados (precioDolar +
+      // seña USD) cubren primero los servicios de cosmetic tattoo; lo que
+      // sobra cubre productos en USD; el resto de los productos se cobró en
+      // pesos y su comisión va en ARS. Verificado contra comandas reales:
+      // 01-11251 (2 tintes u$s57 → $176.130 = 2×57×1545), 01-11242 (kit +
+      // brow cement = u$s120 pagados en dólares), 01-11232 (u$s500 al
+      // nanoblading, tinte → $88.065), 01-11036 (u$s100 en dólares, u$s35
+      // restantes → $53.375 = 35×1525).
+      const usdCobrado =
+        Number(comanda.precioDolar ?? 0) +
+        Number(comanda.prepagoUSD?.monto ?? 0);
+      const usdServicios = (comanda.items ?? [])
+        .filter((item) => item.productoServicio && esServicioUSD(item))
+        .reduce((sum, item) => sum + subtotalItem(item), 0);
+      let usdDisponibleProductos = Math.max(0, usdCobrado - usdServicios);
+
+      // Tasa para pasar a pesos los productos cobrados en ARS: el dólar
+      // pedido en el filtro, o el valorDolar con que se cargó la comanda.
+      const tasa =
+        filtros.dolar && filtros.dolar > 0
+          ? Number(filtros.dolar)
+          : Number(comanda.valorDolar ?? 0);
+
       comanda.items?.forEach((item) => {
         if (!item.trabajador || !item.productoServicio) {
           return; // Skip items sin trabajador o producto/servicio
@@ -3232,22 +3287,12 @@ export class ComandaService {
         const esRosarioConConsulta = nombre === 'Rosario' && unidadNegocio === 'Consultas';
 
         // Base de comisión = item.precio tal como fue cargado, en su moneda
-        // nativa (ARS para estilismo, USD para cosmetic tattoo). NO se aplica
-        // ninguna conversión con valorDolar ni se reemplaza por precioFijoARS:
-        // las comisiones se pagan/reportan en la moneda del propio precio, y
-        // los valores crudos coinciden exacto con las liquidaciones manuales.
-        let precio = Number(item.precio ?? 0);
+        // de lista (ARS para estilismo, USD para cosmetic tattoo). Para los
+        // servicios no se convierte nunca: los valores crudos coinciden
+        // exacto con las liquidaciones manuales. Los productos de lista USD
+        // sí se pasan a pesos cuando se cobraron en pesos (ver arriba).
+        const precio = precioBaseItem(item);
         const cantidad = Number(item.cantidad ?? 1);
-        const descuento = Number(item.descuento ?? 0);
-
-        // Fallback: algunos ítems se cargaron con precio 0 apoyándose en el
-        // precio fijo en ARS. Solo en ese caso usamos precioFijoARS.
-        if (precio === 0) {
-          const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
-          if (precioFijoARS > 0) {
-            precio = precioFijoARS;
-          }
-        }
 
         // Inicializar o actualizar totales del trabajador
         if (!totalesPorTrabajador.has(trabajadorId)) {
@@ -3293,14 +3338,13 @@ export class ComandaService {
           return;
         }
 
-        // Subtotal en la moneda nativa del ítem (precio ya viene en ARS o USD)
-        const subtotal = (precio * cantidad) - descuento;
+        // Subtotal en la moneda de lista del ítem (precio ya viene en ARS o USD)
+        const subtotal = subtotalItem(item);
 
         if (tipo === TipoProductoServicio.SERVICIO) {
           // Servicios: la moneda depende de la unidad de negocio.
           // Cosmetic tattoo = USD, el resto (estilismo) = ARS.
-          const esUSD = !!unidadNegocio && UNIDADES_USD.includes(unidadNegocio);
-          if (esUSD) {
+          if (esServicioUSD(item)) {
             trabajadorData.serviciosUSD += subtotal;
             totalServiciosUSD += subtotal;
           } else {
@@ -3308,22 +3352,20 @@ export class ComandaService {
             totalServiciosARS += subtotal;
           }
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
-          // Productos: la unidad de negocio no distingue moneda (todos son
-          // "Productos"). La mayoría se venden en dólares (after care, tintes,
-          // brow cement, kit pinzas, etc.). Criterio: precio congelado /
-          // precioFijoARS => pesos; y los precios grandes (>=1000) también son
-          // pesos aunque estén mal cargados como no congelados (ej. BROW
-          // STYLING $180-200 mil). El resto (no congelado, precio chico) = USD.
-          const esCongelado = item.productoServicio?.esPrecioCongelado === true;
-          const precioFijoARS = Number(item.productoServicio?.precioFijoARS ?? 0);
-          const esProductoARS =
-            esCongelado || precioFijoARS > 0 || precio >= 1000;
-          if (esProductoARS) {
+          if (esProductoListaARS(item, precio)) {
+            // Precio congelado / fijo en pesos: ya está en ARS.
             trabajadorData.productosARS += subtotal;
             totalProductosARS += subtotal;
           } else {
-            trabajadorData.productosUSD += subtotal;
-            totalProductosUSD += subtotal;
+            // Lista en USD: va en dólares solo la parte que se cobró en
+            // dólares; el resto se cobró en pesos al valorDolar.
+            const enUSD = Math.min(subtotal, usdDisponibleProductos);
+            usdDisponibleProductos -= enUSD;
+            const enARS = (subtotal - enUSD) * tasa;
+            trabajadorData.productosUSD += enUSD;
+            totalProductosUSD += enUSD;
+            trabajadorData.productosARS += enARS;
+            totalProductosARS += enARS;
           }
         }
       });

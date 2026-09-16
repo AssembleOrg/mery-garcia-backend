@@ -490,7 +490,7 @@ Si es un egreso de CAJA_2 traspasado, actualiza automáticamente el movimiento a
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @ApiOperation({
     summary: 'Calcular comisiones de trabajadores',
-    description: 'Calcula las comisiones de los trabajadores en un rango de fechas. Se resta el 10% del total de cada tipo (servicio/producto) y luego se aplica: 30% comisión para servicios, 10% comisión para productos. Si no se proporcionan fechas, se usa el día actual.',
+    description: 'Calcula las comisiones de los trabajadores en un rango de fechas, separadas por moneda (ARS/USD): 30% para servicios, 10% para productos. Servicios de cosmetic tattoo en USD, el resto en ARS. Los productos de lista en USD van en USD solo por la parte cobrada en dólares (precioDolar + seña USD, descontando primero los servicios en USD); el resto se cobró en pesos y se pasa a ARS al valorDolar de la comanda (o al parámetro dolar). Si no se proporcionan fechas, se usa el día actual.',
   })
   @ApiResponse({
     status: 200,
