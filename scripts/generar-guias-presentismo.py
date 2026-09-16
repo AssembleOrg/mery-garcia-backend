@@ -47,11 +47,28 @@ BORDE = colors.HexColor("#f0d8de")
 
 EQUIPO = [
     ("Micaela", "micaela@merygarcia.local"),
-    ("Rosario", "rosario@merygarcia.local"),
-    ("Luna", "luna@merygarcia.local"),
-    ("Karina", "karina@merygarcia.local"),
+    ("Rosario Nauda", "rosario@merygarcia.local"),
+    ("Luna García", "luna@merygarcia.local"),
+    ("Karina Navarro", "karina@merygarcia.local"),
     ("Ivonne", "ivonne@merygarcia.local"),
 ]
+
+
+def claves_equipo():
+    """Contraseñas del equipo desde EQUIPO_PASS, como `usuario=clave;usuario=clave`.
+
+    El usuario es la parte del correo antes de la arroba. Sin la variable, la
+    columna sale en blanco y Mery las entrega aparte.
+    """
+    import os
+
+    crudo = os.environ.get("EQUIPO_PASS", "")
+    claves = {}
+    for par in crudo.split(";"):
+        if "=" in par:
+            usuario, clave = par.split("=", 1)
+            claves[usuario.strip().lower()] = clave.strip()
+    return claves
 
 MERY_USUARIO = "mery@merygarcia.local"
 
@@ -223,7 +240,8 @@ def documento(ruta, titulo_meta, pie_texto, historia):
 
 # ─── Guía del equipo ──────────────────────────────────────────────
 
-def guia_equipo(carpeta):
+def guia_equipo(carpeta, claves=None):
+    claves = claves or {}
     h = [Spacer(1, 24 * mm)]
     h.append(p("Registro de entrada y salida", "titulo"))
     h.append(p("Una guía corta para arrancar. No hace falta instalar nada.", "subtitulo"))
@@ -246,11 +264,14 @@ def guia_equipo(carpeta):
 
     h.append(Spacer(1, 6))
     h.append(p("Tu usuario", "h2"))
-    h.append(p("Cada una entra con su propio correo. La contraseña te la entrega Mery aparte."))
+    if claves:
+        h.append(p("Cada una entra con su propio correo y su contraseña. Buscá tu fila."))
+    else:
+        h.append(p("Cada una entra con su propio correo. La contraseña te la entrega Mery aparte."))
     h.append(tabla(
         ["Nombre", "Correo con el que entrás", "Contraseña"],
-        [[n, c, ""] for n, c in EQUIPO],
-        [30 * mm, 80 * mm, 49 * mm],
+        [[n, c, claves.get(c.split("@")[0], "")] for n, c in EQUIPO],
+        [38 * mm, 76 * mm, 45 * mm],
     ))
     h.append(Spacer(1, 8))
     h.append(recuadro(
@@ -471,5 +492,5 @@ if __name__ == "__main__":
     # La contraseña se pasa por variable de entorno para no dejarla en el repo.
     import os
     clave = os.environ.get("MERY_PASS", "(pedirsela al administrador)")
-    guia_equipo(destino)
+    guia_equipo(destino, claves_equipo())
     guia_mery(destino, clave)

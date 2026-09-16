@@ -7,6 +7,7 @@
 #
 #   pnpm run guias                      # usa la contraseña de MERY_PASS o un aviso
 #   MERY_PASS='...' pnpm run guias      # con la contraseña real de Mery
+#   EQUIPO_PASS='micaela=...;luna=...' pnpm run guias   # con las claves del equipo en la tabla
 #   pnpm run guias -- otra/carpeta      # a otra carpeta
 set -euo pipefail
 
