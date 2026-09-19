@@ -19,6 +19,8 @@ import { ProductoServicioService } from './services/producto-servicio.service';
 import { UnidadNegocioService } from './services/unidad-negocio.service';
 import { ItemComandaService } from './services/item-comanda.service';
 import { MovimientoService } from './services/movimiento.service';
+import { ReporteServiciosService } from './services/reporte-servicios.service';
+import { ReporteServiciosPdfService } from './services/reporte-servicios-pdf.service';
 import { Cliente } from 'src/cliente/entities/Cliente.entity';
 import { Personal } from 'src/personal/entities/Personal.entity';
 import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
@@ -70,6 +72,8 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
     UnidadNegocioService,
     ItemComandaService,
     MovimientoService,
+    ReporteServiciosService,
+    ReporteServiciosPdfService,
   ],
   exports: [
     ComandaService,

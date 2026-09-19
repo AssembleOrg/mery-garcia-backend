@@ -12,7 +12,9 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -27,6 +29,8 @@ import { Roles } from 'src/decorators/roles.decorator';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
 import { ComandaService } from './comanda.service';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
+import { ReporteServiciosService } from './services/reporte-servicios.service';
+import { ReporteServiciosPdfService } from './services/reporte-servicios-pdf.service';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
 import { ActualizarComandaDto } from './dto/actualizar-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
@@ -51,6 +55,8 @@ export class ComandaController {
   constructor(
     private readonly comandaService: ComandaService,
     private readonly auditoriaService: AuditoriaService,
+    private readonly reporteServicios: ReporteServiciosService,
+    private readonly reporteServiciosPdf: ReporteServiciosPdfService,
   ) {}
 
   @Post()
@@ -526,6 +532,47 @@ Si es un egreso de CAJA_2 traspasado, actualiza automáticamente el movimiento a
       fechaHasta,
       dolar,
     });
+  }
+
+  @Get('comisiones/reporte-servicios')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({
+    summary: 'Reporte de servicios y señas por profesional',
+    description:
+      'Por trabajadora: detalle de servicios (no productos ni consultas) con cantidad y monto, y desglose de señas por medio de pago (clientas, cantidad y monto). Filtrable por trabajadoras (ids separados por coma).',
+  })
+  async obtenerReporteServicios(
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('trabajadores') trabajadores?: string,
+  ) {
+    return this.reporteServicios.generar({
+      fechaDesde,
+      fechaHasta,
+      trabajadores: trabajadores ? trabajadores.split(',').filter(Boolean) : undefined,
+    });
+  }
+
+  @Get('comisiones/reporte-servicios/pdf')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({ summary: 'Reporte de servicios y señas por profesional (PDF)' })
+  async descargarReporteServiciosPdf(
+    @Res() res: Response,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('trabajadores') trabajadores?: string,
+  ) {
+    const reporte = await this.reporteServicios.generar({
+      fechaDesde,
+      fechaHasta,
+      trabajadores: trabajadores ? trabajadores.split(',').filter(Boolean) : undefined,
+    });
+    const pdf = await this.reporteServiciosPdf.generar(reporte);
+    const nombre = `servicios-y-senas_${reporte.fechaDesde}_a_${reporte.fechaHasta}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+    res.setHeader('Content-Length', String(pdf.length));
+    res.end(Buffer.from(pdf));
   }
 
   // ─── Ajuste Efectivo CAJA 2 ──────────────────────────────────────
