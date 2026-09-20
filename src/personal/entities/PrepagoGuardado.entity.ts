@@ -5,6 +5,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Index,
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
@@ -60,4 +61,33 @@ export class PrepagoGuardado {
 
   @Column({ type: 'enum', enum: TipoMovimiento, nullable: true })
   tipoMovimiento?: TipoMovimiento;
+
+  // ─── Reserva de origen (booking) ──────────────────────────────────────
+  // Se completan solo cuando la seña entró automáticamente desde una reserva
+  // pagada por Mercado Pago en el sistema de turnos. Las señas cargadas a mano
+  // (efectivo en el local, etc.) los dejan en null.
+
+  /** Servicio tal como se reservó en booking (nombre real, puede ser un combo). */
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  servicioReservado?: string;
+
+  /** Profesional con la que se reservó (nombre). Informativo para el reporte. */
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  empleadoReservado?: string;
+
+  /**
+   * Id de la reserva en booking. Es la llave de idempotencia: una misma reserva
+   * no crea dos señas. Único, pero admite muchos null (las señas manuales).
+   */
+  @Index('ux_prepago_booking_id', { unique: true, where: '"bookingId" IS NOT NULL' })
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  bookingId?: string;
+
+  /** Código visible de la reserva (para mostrar en la vista de señas). */
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  bookingCode?: string;
+
+  /** Fecha y hora del turno reservado. */
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  fechaTurno?: Date;
 }
