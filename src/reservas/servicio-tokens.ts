@@ -101,7 +101,16 @@ export type Coincidencia = 'COINCIDE' | 'PARCIAL' | 'DISTINTO' | 'INDETERMINADO'
  *  - INDETERMINADO: no se pudo reconocer el servicio reservado.
  */
 export function compararServicio(reservado: string, tomados: string[]): Coincidencia {
-  const r = tokensDeServicio(reservado);
+  return compararServicios([reservado], tomados);
+}
+
+/**
+ * Igual que compararServicio pero con varios servicios reservados (la seña
+ * puede apuntar a más de uno). Coincide si TODO lo reservado se hizo; parcial
+ * si se hizo una parte; distinto si nada.
+ */
+export function compararServicios(reservados: string[], tomados: string[]): Coincidencia {
+  const r = tokensDeVarios(reservados);
   r.delete('CONSULTA'); // la consulta no define la coincidencia del trabajo
   if (r.size === 0) return 'INDETERMINADO';
   const hechos = tokensDeVarios(tomados);

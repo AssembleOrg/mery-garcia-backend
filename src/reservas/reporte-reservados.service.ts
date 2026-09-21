@@ -5,7 +5,7 @@ import { DateTime } from 'luxon';
 import { PrepagoGuardado } from '../personal/entities/PrepagoGuardado.entity';
 import { Comanda } from '../comanda/entities/Comanda.entity';
 import { TipoProductoServicio } from '../comanda/entities/productoServicio.entity';
-import { Coincidencia, compararServicio } from './servicio-tokens';
+import { Coincidencia, compararServicios } from './servicio-tokens';
 
 const TZ = 'America/Argentina/Buenos_Aires';
 
@@ -94,8 +94,14 @@ export class ReporteReservadosService {
             .filter((n): n is string => !!n)
         : [];
 
+      const reservados =
+        sena.serviciosReservados && sena.serviciosReservados.length
+          ? sena.serviciosReservados
+          : sena.servicioReservado
+            ? [sena.servicioReservado]
+            : [];
       const coincidencia: Coincidencia | null = comanda
-        ? compararServicio(sena.servicioReservado ?? '', serviciosTomados)
+        ? compararServicios(reservados, serviciosTomados)
         : null;
 
       filas.push({
@@ -103,7 +109,7 @@ export class ReporteReservadosService {
         bookingCode: sena.bookingCode ?? null,
         fechaTurno: iso(sena.fechaTurno),
         clienta: sena.cliente?.nombre ?? 'Sin clienta',
-        servicioReservado: sena.servicioReservado ?? '',
+        servicioReservado: reservados.join(' + ') || (sena.servicioReservado ?? ''),
         empleadoReservado: sena.empleadoReservado ?? null,
         estadoUso: comanda ? 'USADA' : 'SIN_USAR',
         comandaNumero: comanda?.numero ?? null,

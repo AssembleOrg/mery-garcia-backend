@@ -85,6 +85,7 @@ export class ReservasService {
       cliente,
       observaciones: this.armarObservaciones(dto),
       servicioReservado: dto.servicioReservado.trim().slice(0, 200),
+      serviciosReservados: [dto.servicioReservado.trim().slice(0, 200)],
       empleadoReservado: dto.empleadoReservado?.trim().slice(0, 150) || undefined,
       bookingId,
       bookingCode: dto.bookingCode?.trim().slice(0, 40) || undefined,

@@ -24,7 +24,15 @@ export class ClienteService {
   ) {}
 
   async crear(crearClienteDto: CrearClienteDto): Promise<Cliente> {
-    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, ...rest } = crearClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, serviciosReservados, ...rest } = crearClienteDto;
+    // Lista de servicios de la seña: la nueva (array) o, por compat, el único.
+    const listaServicios = (serviciosReservados && serviciosReservados.length
+      ? serviciosReservados
+      : servicioReservado ? [servicioReservado] : [])
+      .map((x) => x.trim().slice(0, 200))
+      .filter((x) => x.length > 0);
+    const servicioPrincipal = listaServicios[0];
+    const arrayServicios = listaServicios.length ? listaServicios : undefined;
     // Verificar si ya existe un cliente con el mismo CUIT
     if (rest.cuit) {
       const clienteExistente = await this.clienteRepository.findOne({
@@ -52,7 +60,8 @@ export class ClienteService {
           cliente: clienteGuardado,
           observaciones: 'Seña USD creada automáticamente',
           tipoPago: tipoPagoUSD ?? TipoPago.EFECTIVO,
-          servicioReservado: servicioReservado?.trim().slice(0, 200) || undefined,
+          servicioReservado: servicioPrincipal,
+          serviciosReservados: arrayServicios,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
@@ -65,7 +74,8 @@ export class ClienteService {
           cliente: clienteGuardado,
           observaciones: 'Seña ARS creada automáticamente',
           tipoPago: tipoPagoARS ?? TipoPago.EFECTIVO,
-          servicioReservado: servicioReservado?.trim().slice(0, 200) || undefined,
+          servicioReservado: servicioPrincipal,
+          serviciosReservados: arrayServicios,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
@@ -273,7 +283,15 @@ export class ClienteService {
     console.table(actualizarClienteDto);
     
     // Extraer señas del DTO
-    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, ...camposCliente } = actualizarClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, serviciosReservados, ...camposCliente } = actualizarClienteDto;
+    const listaServiciosUpd = (serviciosReservados && serviciosReservados.length
+      ? serviciosReservados
+      : servicioReservado ? [servicioReservado] : [])
+      .map((x) => x.trim().slice(0, 200))
+      .filter((x) => x.length > 0);
+    const servicioPrincipalUpd = listaServiciosUpd.length ? listaServiciosUpd[0] : undefined;
+    const arrayServiciosUpd = listaServiciosUpd.length ? listaServiciosUpd : undefined;
+    const tocaServicios = serviciosReservados !== undefined || servicioReservado !== undefined;
     
     // Actualizar campos del cliente
     Object.assign(cliente, camposCliente);
@@ -299,7 +317,7 @@ export class ClienteService {
           señaUsdExistente.monto = señaUsd;
           señaUsdExistente.observaciones = `Seña USD actualizada a ${señaUsd}`;
           señaUsdExistente.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
-          if (servicioReservado !== undefined) señaUsdExistente.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
+          if (tocaServicios) { señaUsdExistente.servicioReservado = servicioPrincipalUpd; señaUsdExistente.serviciosReservados = arrayServiciosUpd; }
           await this.prepagoGuardadoRepository.save(señaUsdExistente);
         } else {
           // Eliminar seña si se establece en 0
@@ -331,7 +349,7 @@ export class ClienteService {
           señaArsExistente.monto = señaArs;
           señaArsExistente.observaciones = `Seña ARS actualizada a ${señaArs}`;
           señaArsExistente.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
-          if (servicioReservado !== undefined) señaArsExistente.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
+          if (tocaServicios) { señaArsExistente.servicioReservado = servicioPrincipalUpd; señaArsExistente.serviciosReservados = arrayServiciosUpd; }
           await this.prepagoGuardadoRepository.save(señaArsExistente);
         } else {
           // Eliminar seña si se establece en 0

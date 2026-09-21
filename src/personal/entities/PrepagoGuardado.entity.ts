@@ -67,9 +67,19 @@ export class PrepagoGuardado {
   // pagada por Mercado Pago en el sistema de turnos. Las señas cargadas a mano
   // (efectivo en el local, etc.) los dejan en null.
 
-  /** Servicio tal como se reservó en booking (nombre real, puede ser un combo). */
+  /**
+   * Servicio principal de la seña (compat). Con varios servicios queda el
+   * primero; la lista completa vive en `serviciosReservados`.
+   */
   @Column({ type: 'varchar', length: 200, nullable: true })
   servicioReservado?: string;
+
+  /**
+   * Todos los servicios a los que apunta la seña (una clienta puede venir a
+   * hacerse más de uno con la misma seña). Nombres reales del sistema de turnos.
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  serviciosReservados?: string[];
 
   /** Profesional con la que se reservó (nombre). Informativo para el reporte. */
   @Column({ type: 'varchar', length: 150, nullable: true })

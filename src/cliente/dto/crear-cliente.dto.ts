@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsEmail, Length, IsUUID, IsNumber, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsEmail, Length, IsUUID, IsNumber, IsEnum, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TipoPago } from 'src/enums/TipoPago.enum';
 
@@ -84,9 +84,15 @@ export class CrearClienteDto {
     @IsEnum(TipoPago)
     tipoPagoUSD?: TipoPago;
 
-    /** Servicio al que apunta la seña (nombre del sistema de turnos). */
+    /** Servicio al que apunta la seña (compat, un solo servicio). */
     @IsOptional()
     @IsString()
     servicioReservado?: string;
+
+    /** Servicios a los que apunta la seña (una seña puede cubrir varios). */
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    serviciosReservados?: string[];
 
 } 
