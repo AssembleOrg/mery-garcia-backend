@@ -6,6 +6,7 @@ import { Roles } from '../decorators/roles.decorator';
 import { RolPersonal } from '../enums/RolPersonal.enum';
 import { ReporteReservadosService } from './reporte-reservados.service';
 import { ReporteReservadosPdfService } from './reporte-reservados-pdf.service';
+import { ServiciosBookingService } from './servicios-booking.service';
 
 /**
  * Reporte "reservó un servicio, ¿se hizo ese u otro?". Solo admin y encargada.
@@ -17,7 +18,15 @@ export class ReservasReporteController {
   constructor(
     private readonly reporte: ReporteReservadosService,
     private readonly pdf: ReporteReservadosPdfService,
+    private readonly serviciosBooking: ServiciosBookingService,
   ) {}
+
+  /** Lista de servicios de turnos, para elegir a qué apunta una seña manual. */
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @Get('servicios')
+  servicios() {
+    return this.serviciosBooking.listar();
+  }
 
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
   @Get('reservados')

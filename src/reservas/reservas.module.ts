@@ -8,6 +8,7 @@ import { ReservasController } from './reservas.controller';
 import { ReservasService } from './reservas.service';
 import { ReporteReservadosService } from './reporte-reservados.service';
 import { ReporteReservadosPdfService } from './reporte-reservados-pdf.service';
+import { ServiciosBookingService } from './servicios-booking.service';
 import { ReservasReporteController } from './reservas-reporte.controller';
 
 /**
@@ -18,7 +19,7 @@ import { ReservasReporteController } from './reservas-reporte.controller';
 @Module({
   imports: [ConfigModule, TypeOrmModule.forFeature([PrepagoGuardado, Cliente, Comanda])],
   controllers: [ReservasController, ReservasReporteController],
-  providers: [ReservasService, ReporteReservadosService, ReporteReservadosPdfService],
+  providers: [ReservasService, ReporteReservadosService, ReporteReservadosPdfService, ServiciosBookingService],
   exports: [ReservasService],
 })
 export class ReservasModule {}

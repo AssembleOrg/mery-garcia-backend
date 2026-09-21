@@ -84,4 +84,9 @@ export class CrearClienteDto {
     @IsEnum(TipoPago)
     tipoPagoUSD?: TipoPago;
 
+    /** Servicio al que apunta la seña (nombre del sistema de turnos). */
+    @IsOptional()
+    @IsString()
+    servicioReservado?: string;
+
 } 

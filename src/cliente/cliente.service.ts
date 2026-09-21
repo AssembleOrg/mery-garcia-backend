@@ -24,7 +24,7 @@ export class ClienteService {
   ) {}
 
   async crear(crearClienteDto: CrearClienteDto): Promise<Cliente> {
-    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, ...rest } = crearClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, ...rest } = crearClienteDto;
     // Verificar si ya existe un cliente con el mismo CUIT
     if (rest.cuit) {
       const clienteExistente = await this.clienteRepository.findOne({
@@ -52,6 +52,7 @@ export class ClienteService {
           cliente: clienteGuardado,
           observaciones: 'Seña USD creada automáticamente',
           tipoPago: tipoPagoUSD ?? TipoPago.EFECTIVO,
+          servicioReservado: servicioReservado?.trim().slice(0, 200) || undefined,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
@@ -64,6 +65,7 @@ export class ClienteService {
           cliente: clienteGuardado,
           observaciones: 'Seña ARS creada automáticamente',
           tipoPago: tipoPagoARS ?? TipoPago.EFECTIVO,
+          servicioReservado: servicioReservado?.trim().slice(0, 200) || undefined,
         });
         prepagosGuardados.push(prepagoGuardado);
       }
@@ -271,7 +273,7 @@ export class ClienteService {
     console.table(actualizarClienteDto);
     
     // Extraer señas del DTO
-    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, ...camposCliente } = actualizarClienteDto;
+    const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, ...camposCliente } = actualizarClienteDto;
     
     // Actualizar campos del cliente
     Object.assign(cliente, camposCliente);
@@ -297,6 +299,7 @@ export class ClienteService {
           señaUsdExistente.monto = señaUsd;
           señaUsdExistente.observaciones = `Seña USD actualizada a ${señaUsd}`;
           señaUsdExistente.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
+          if (servicioReservado !== undefined) señaUsdExistente.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
           await this.prepagoGuardadoRepository.save(señaUsdExistente);
         } else {
           // Eliminar seña si se establece en 0
@@ -311,6 +314,7 @@ export class ClienteService {
         prepagoGuardado.cliente = clienteActualizado;
         prepagoGuardado.observaciones = 'Seña USD creada';
         prepagoGuardado.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
+        prepagoGuardado.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
     }
@@ -327,6 +331,7 @@ export class ClienteService {
           señaArsExistente.monto = señaArs;
           señaArsExistente.observaciones = `Seña ARS actualizada a ${señaArs}`;
           señaArsExistente.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
+          if (servicioReservado !== undefined) señaArsExistente.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
           await this.prepagoGuardadoRepository.save(señaArsExistente);
         } else {
           // Eliminar seña si se establece en 0
@@ -341,6 +346,7 @@ export class ClienteService {
         prepagoGuardado.cliente = clienteActualizado;
         prepagoGuardado.observaciones = 'Seña ARS creada';
         prepagoGuardado.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
+        prepagoGuardado.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
         await this.prepagoGuardadoRepository.save(prepagoGuardado);
       }
     }
