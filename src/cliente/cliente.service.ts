@@ -280,7 +280,6 @@ export class ClienteService {
       }
     }
 
-    console.table(actualizarClienteDto);
     
     // Extraer señas del DTO
     const { señaUsd, señaArs, tipoPagoARS, tipoPagoUSD, servicioReservado, serviciosReservados, ...camposCliente } = actualizarClienteDto;
@@ -297,79 +296,142 @@ export class ClienteService {
     Object.assign(cliente, camposCliente);
     const clienteActualizado = await this.clienteRepository.save(cliente);
 
-    // Obtener señas existentes del cliente
-    const señasExistentes = await this.prepagoGuardadoRepository.find({
-      where: {
-        cliente: { id: clienteActualizado.id },
-        estado: EstadoPrepago.ACTIVA,
-      },
-    });
-
-    // Procesar señas USD
+    // El formulario edita el TOTAL de señas por moneda (la suma de las activas).
+    // Antes ese total se escribía sobre una sola seña cualquiera, así que con dos
+    // señas activas (30.000 + 40.000) cargar 40.000 dejaba 80.000 y además se
+    // perdía el método de pago y el origen de la seña pisada.
+    const servicios = {
+      toca: tocaServicios,
+      principal: servicioPrincipalUpd,
+      lista: arrayServiciosUpd,
+    };
     if (señaUsd !== undefined) {
-      const señaUsdExistente = señasExistentes.find(
-        seña => seña.moneda === TipoMoneda.USD
-      );
-
-      if (señaUsdExistente) {
-        if (señaUsd > 0) {
-          // Reemplazar el valor de la seña existente
-          señaUsdExistente.monto = señaUsd;
-          señaUsdExistente.observaciones = `Seña USD actualizada a ${señaUsd}`;
-          señaUsdExistente.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
-          if (tocaServicios) { señaUsdExistente.servicioReservado = servicioPrincipalUpd; señaUsdExistente.serviciosReservados = arrayServiciosUpd; }
-          await this.prepagoGuardadoRepository.save(señaUsdExistente);
-        } else {
-          // Eliminar seña si se establece en 0
-          await this.prepagoGuardadoRepository.softRemove(señaUsdExistente);
-        }
-      } else if (señaUsd > 0) {
-        // Crear nueva seña solo si no existe y el monto es mayor a 0
-        const prepagoGuardado = new PrepagoGuardado();
-        prepagoGuardado.monto = señaUsd;
-        prepagoGuardado.moneda = TipoMoneda.USD;
-        prepagoGuardado.estado = EstadoPrepago.ACTIVA;
-        prepagoGuardado.cliente = clienteActualizado;
-        prepagoGuardado.observaciones = 'Seña USD creada';
-        prepagoGuardado.tipoPago = tipoPagoUSD ?? TipoPago.EFECTIVO;
-        prepagoGuardado.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
-        await this.prepagoGuardadoRepository.save(prepagoGuardado);
-      }
+      await this.ajustarTotalSeñas(clienteActualizado, TipoMoneda.USD, señaUsd, tipoPagoUSD, servicios);
     }
-
-    // Procesar señas ARS
     if (señaArs !== undefined) {
-      const señaArsExistente = señasExistentes.find(
-        seña => seña.moneda === TipoMoneda.ARS
-      );
-
-      if (señaArsExistente) {
-        if (señaArs > 0) {
-          // Reemplazar el valor de la seña existente
-          señaArsExistente.monto = señaArs;
-          señaArsExistente.observaciones = `Seña ARS actualizada a ${señaArs}`;
-          señaArsExistente.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
-          if (tocaServicios) { señaArsExistente.servicioReservado = servicioPrincipalUpd; señaArsExistente.serviciosReservados = arrayServiciosUpd; }
-          await this.prepagoGuardadoRepository.save(señaArsExistente);
-        } else {
-          // Eliminar seña si se establece en 0
-          await this.prepagoGuardadoRepository.softRemove(señaArsExistente);
-        }
-      } else if (señaArs > 0) {
-        // Crear nueva seña solo si no existe y el monto es mayor a 0
-        const prepagoGuardado = new PrepagoGuardado();
-        prepagoGuardado.monto = señaArs;
-        prepagoGuardado.moneda = TipoMoneda.ARS;
-        prepagoGuardado.estado = EstadoPrepago.ACTIVA;
-        prepagoGuardado.cliente = clienteActualizado;
-        prepagoGuardado.observaciones = 'Seña ARS creada';
-        prepagoGuardado.tipoPago = tipoPagoARS ?? TipoPago.EFECTIVO;
-        prepagoGuardado.servicioReservado = servicioReservado?.trim().slice(0, 200) || undefined;
-        await this.prepagoGuardadoRepository.save(prepagoGuardado);
-      }
+      await this.ajustarTotalSeñas(clienteActualizado, TipoMoneda.ARS, señaArs, tipoPagoARS, servicios);
     }
 
     return await this.obtenerPorId(clienteActualizado.id);
+  }
+
+  /**
+   * Lleva la suma de señas activas de una moneda al `nuevoTotal` pedido,
+   * preservando el origen de cada seña:
+   *  - Sin señas: crea una nueva si el total es mayor a 0.
+   *  - Una sola seña: se ajusta su monto (y el método si es una carga manual).
+   *  - Varias señas: si el total sube, se agrega una seña de ajuste por la
+   *    diferencia; si baja, se descuenta de la más antigua a la más nueva y las
+   *    que quedan en 0 se anulan. Si el total no cambia, no se toca ningún monto.
+   */
+  private async ajustarTotalSeñas(
+    cliente: Cliente,
+    moneda: TipoMoneda,
+    nuevoTotalRaw: number,
+    tipoPago: string | undefined,
+    servicios: { toca: boolean; principal?: string; lista?: string[] },
+  ): Promise<void> {
+    const redondear = (n: number) => Math.round(Number(n) * 100) / 100;
+    const nuevoTotal = Math.max(0, redondear(nuevoTotalRaw));
+    const fecha = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const nota = (previa: string | undefined, texto: string) =>
+      [previa?.trim(), `${texto} (${fecha})`].filter(Boolean).join(' · ');
+    const aplicarServicios = (seña: PrepagoGuardado) => {
+      if (!servicios.toca) return;
+      seña.servicioReservado = servicios.principal;
+      seña.serviciosReservados = servicios.lista;
+    };
+
+    const activas = await this.prepagoGuardadoRepository.find({
+      where: { cliente: { id: cliente.id }, moneda, estado: EstadoPrepago.ACTIVA },
+      order: { fechaCreacion: 'ASC' },
+    });
+    const totalActual = redondear(activas.reduce((acc, s) => acc + Number(s.monto), 0));
+
+    if (activas.length === 0) {
+      if (nuevoTotal <= 0) return;
+      const seña = new PrepagoGuardado();
+      seña.monto = nuevoTotal;
+      seña.moneda = moneda;
+      seña.estado = EstadoPrepago.ACTIVA;
+      seña.cliente = cliente;
+      seña.observaciones = `Seña ${moneda} creada`;
+      seña.tipoPago = (tipoPago as TipoPago) ?? TipoPago.EFECTIVO;
+      aplicarServicios(seña);
+      await this.prepagoGuardadoRepository.save(seña);
+      return;
+    }
+
+    if (activas.length === 1) {
+      const seña = activas[0];
+      if (nuevoTotal <= 0) {
+        seña.observaciones = nota(seña.observaciones, 'Anulada desde la ficha del cliente');
+        await this.prepagoGuardadoRepository.save(seña);
+        await this.prepagoGuardadoRepository.softRemove(seña);
+        return;
+      }
+      if (redondear(seña.monto) !== nuevoTotal) {
+        seña.observaciones = nota(seña.observaciones, `Monto ajustado de ${redondear(seña.monto)} a ${nuevoTotal}`);
+        seña.monto = nuevoTotal;
+      }
+      // Las señas de reservas online conservan su método (Mercado Pago).
+      if (tipoPago && !seña.bookingId) seña.tipoPago = tipoPago as TipoPago;
+      aplicarServicios(seña);
+      await this.prepagoGuardadoRepository.save(seña);
+      return;
+    }
+
+    const masNueva = activas[activas.length - 1];
+    const diferencia = redondear(nuevoTotal - totalActual);
+
+    if (diferencia === 0) {
+      if (servicios.toca) {
+        aplicarServicios(masNueva);
+        await this.prepagoGuardadoRepository.save(masNueva);
+      }
+      return;
+    }
+
+    if (diferencia > 0) {
+      const ajuste = new PrepagoGuardado();
+      ajuste.monto = diferencia;
+      ajuste.moneda = moneda;
+      ajuste.estado = EstadoPrepago.ACTIVA;
+      ajuste.cliente = cliente;
+      ajuste.observaciones = nota(undefined, `Ajuste manual: +${diferencia} (total ${nuevoTotal})`);
+      ajuste.tipoPago = (tipoPago as TipoPago) ?? TipoPago.EFECTIVO;
+      aplicarServicios(ajuste);
+      await this.prepagoGuardadoRepository.save(ajuste);
+      return;
+    }
+
+    // Baja el total: se descuenta primero de la seña más antigua.
+    let restante = -diferencia;
+    const sobrevivientes: PrepagoGuardado[] = [];
+    for (const seña of activas) {
+      const monto = redondear(seña.monto);
+      if (restante <= 0) {
+        sobrevivientes.push(seña);
+        continue;
+      }
+      if (monto <= restante) {
+        restante = redondear(restante - monto);
+        seña.observaciones = nota(seña.observaciones, `Anulada por ajuste manual del total a ${nuevoTotal}`);
+        await this.prepagoGuardadoRepository.save(seña);
+        await this.prepagoGuardadoRepository.softRemove(seña);
+      } else {
+        seña.observaciones = nota(seña.observaciones, `Monto ajustado de ${monto} a ${redondear(monto - restante)}`);
+        seña.monto = redondear(monto - restante);
+        restante = 0;
+        await this.prepagoGuardadoRepository.save(seña);
+        sobrevivientes.push(seña);
+      }
+    }
+    const destino = sobrevivientes[sobrevivientes.length - 1];
+    if (destino && servicios.toca) {
+      aplicarServicios(destino);
+      await this.prepagoGuardadoRepository.save(destino);
+    }
   }
 
   async eliminar(id: string): Promise<void> {
