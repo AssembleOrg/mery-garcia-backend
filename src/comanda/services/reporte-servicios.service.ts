@@ -34,6 +34,18 @@ export interface FiltrosReporteServicios {
 
 export interface ServicioDetalle {
   nombre: string;
+  /** Categoría del servicio (A, B, C...) o null si no tiene. */
+  categoria: string | null;
+  cantidad: number;
+  montoARS: number;
+  montoUSD: number;
+}
+
+/** Servicios de una trabajadora agrupados por categoría. */
+export interface CategoriaDetalle {
+  /** Nombre de la categoría; null = servicios sin categoría. */
+  nombre: string | null;
+  orden: number;
   cantidad: number;
   montoARS: number;
   montoUSD: number;
@@ -54,6 +66,7 @@ export interface TrabajadoraReporte {
   trabajadorId: string;
   nombre: string;
   servicios: ServicioDetalle[];
+  categorias: CategoriaDetalle[];
   totalServiciosARS: number;
   totalServiciosUSD: number;
   cantidadServicios: number;
@@ -117,6 +130,7 @@ export class ReporteServiciosService {
         'items.trabajador',
         'items.productoServicio',
         'items.productoServicio.unidadNegocio',
+        'items.productoServicio.categoria',
         'prepagoARS',
         'prepagoUSD',
         'cliente',
@@ -131,6 +145,7 @@ export class ReporteServiciosService {
           trabajadorId: id,
           nombre,
           servicios: new Map(),
+          categorias: new Map(),
           senas: new Map(),
         };
         acc.set(id, a);
@@ -157,11 +172,31 @@ export class ReporteServiciosService {
         const subtotal = subtotalItem(item);
         const usd = esServicioUSD(item);
 
-        const det = a.servicios.get(nombre) ?? { nombre, cantidad: 0, montoARS: 0, montoUSD: 0 };
+        const categoria = item.productoServicio.categoria ?? null;
+        const det = a.servicios.get(nombre) ?? {
+          nombre,
+          categoria: categoria?.nombre ?? null,
+          cantidad: 0,
+          montoARS: 0,
+          montoUSD: 0,
+        };
         det.cantidad += cantidad;
         if (usd) det.montoUSD += subtotal;
         else det.montoARS += subtotal;
         a.servicios.set(nombre, det);
+
+        const claveCat = categoria?.id ?? '';
+        const cat = a.categorias.get(claveCat) ?? {
+          nombre: categoria?.nombre ?? null,
+          orden: categoria ? categoria.orden ?? 0 : Number.MAX_SAFE_INTEGER,
+          cantidad: 0,
+          montoARS: 0,
+          montoUSD: 0,
+        };
+        cat.cantidad += cantidad;
+        if (usd) cat.montoUSD += subtotal;
+        else cat.montoARS += subtotal;
+        a.categorias.set(claveCat, cat);
       }
 
       // Señas de esta comanda (ARS y/o USD) → a cada trabajadora con servicio.
@@ -208,11 +243,16 @@ export class ReporteServiciosService {
     const servicios = [...a.servicios.values()]
       .map((s) => ({
         nombre: s.nombre,
+        categoria: s.categoria,
         cantidad: s.cantidad,
         montoARS: redondear(s.montoARS),
         montoUSD: redondear(s.montoUSD),
       }))
       .sort((x, y) => y.montoARS + y.montoUSD * 1e6 - (x.montoARS + x.montoUSD * 1e6));
+
+    const categorias = [...a.categorias.values()]
+      .map((c) => ({ ...c, montoARS: redondear(c.montoARS), montoUSD: redondear(c.montoUSD) }))
+      .sort((x, y) => x.orden - y.orden || (x.nombre ?? '').localeCompare(y.nombre ?? '', 'es'));
 
     const senasPorMedio: SenaPorMedio[] = MEDIOS_PAGO.map(({ tipo, label }) => {
       const s = a.senas.get(tipo);
@@ -230,6 +270,7 @@ export class ReporteServiciosService {
       trabajadorId: a.trabajadorId,
       nombre: a.nombre,
       servicios,
+      categorias,
       totalServiciosARS: redondear(servicios.reduce((n, s) => n + s.montoARS, 0)),
       totalServiciosUSD: redondear(servicios.reduce((n, s) => n + s.montoUSD, 0)),
       cantidadServicios: servicios.reduce((n, s) => n + s.cantidad, 0),
@@ -244,6 +285,8 @@ interface Acumulador {
   trabajadorId: string;
   nombre: string;
   servicios: Map<string, ServicioDetalle>;
+  /** id de categoría ('' = sin categoría) → acumulado. */
+  categorias: Map<string, CategoriaDetalle>;
   senas: Map<TipoPago, { medio: TipoPago; clientas: Set<string>; senas: number; montoARS: number; montoUSD: number }>;
 }
 

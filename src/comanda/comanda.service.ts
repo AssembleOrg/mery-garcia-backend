@@ -3193,6 +3193,7 @@ export class ComandaService {
         'items.trabajador',
         'items.productoServicio',
         'items.productoServicio.unidadNegocio',
+        'items.productoServicio.categoria',
         'prepagoUSD',
       ],
     });
@@ -3209,6 +3210,8 @@ export class ComandaService {
       totalConsultas: number;
       unidadesNegocio: Map<string, number>; // nombre unidad -> cantidad
       productosServicios: Map<string, { cantidad: number; tipo: string }>; // nombre producto/servicio -> {cantidad, tipo}
+      categorias: Map<string, { id: string; nombre: string; orden: number; cantidad: number }>; // id categoría -> conteo de servicios
+      serviciosSinCategoria: number;
     }>();
 
     // Totales generales por moneda
@@ -3307,6 +3310,8 @@ export class ComandaService {
             totalConsultas: 0,
             unidadesNegocio: new Map(),
             productosServicios: new Map(),
+            categorias: new Map(),
+            serviciosSinCategoria: 0,
           });
         }
 
@@ -3328,6 +3333,24 @@ export class ComandaService {
             cantidad,
             tipo: tipo === TipoProductoServicio.SERVICIO ? 'SERVICIO' : 'PRODUCTO',
           });
+        }
+
+        // Contar servicios por categoría (A, B, C...). Las consultas sin
+        // categoría no cuentan como "sin categoría": no son un trabajo.
+        if (tipo === TipoProductoServicio.SERVICIO) {
+          const categoria = item.productoServicio.categoria;
+          if (categoria) {
+            const c = trabajadorData.categorias.get(categoria.id) ?? {
+              id: categoria.id,
+              nombre: categoria.nombre,
+              orden: categoria.orden ?? 0,
+              cantidad: 0,
+            };
+            c.cantidad += cantidad;
+            trabajadorData.categorias.set(categoria.id, c);
+          } else if (unidadNegocio !== 'Consultas') {
+            trabajadorData.serviciosSinCategoria += cantidad;
+          }
         }
 
         // Si es Rosario con consultas, solo contar las consultas
@@ -3406,6 +3429,10 @@ export class ComandaService {
         totalConsultas: Number(trabajadorData.totalConsultas.toFixed(2)),
         unidadesNegocio,
         productosServicios,
+        categorias: [...trabajadorData.categorias.values()].sort(
+          (a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre, 'es'),
+        ),
+        serviciosSinCategoria: trabajadorData.serviciosSinCategoria,
         comisiones: {
           serviciosARS: Number(comServiciosARS.toFixed(2)),
           serviciosUSD: Number(comServiciosUSD.toFixed(2)),

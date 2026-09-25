@@ -119,6 +119,15 @@ export class ComisionTrabajadorDto {
   productosServicios: ProductoServicioItemDto[];
 
   @ApiProperty({
+    description: 'Cantidad de servicios por categoría (A, B, C...)',
+    example: [{ id: 'uuid', nombre: 'Categoría A', orden: 1, cantidad: 12 }],
+  })
+  categorias: { id: string; nombre: string; orden: number; cantidad: number }[];
+
+  @ApiProperty({ description: 'Servicios sin categoría asignada (sin contar consultas)', example: 0 })
+  serviciosSinCategoria: number;
+
+  @ApiProperty({
     description: 'Comisiones desglosadas por tipo',
   })
   comisiones: ComisionPorTipoDto;

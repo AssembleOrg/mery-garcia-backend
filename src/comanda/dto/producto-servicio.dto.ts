@@ -105,6 +105,15 @@ export class CrearProductoServicioDto {
   @IsNumber({ maxDecimalPlaces: 4 })
   @Min(0)
   precioFijoARS?: number;
+
+  @ApiPropertyOptional({
+    description: 'Categoría del servicio (A, B, C...). null la quita.',
+    example: '123e4567-e89b-12d3-a456-426614174000',
+    nullable: true,
+  })
+  @IsOptional()
+  @IsUUID()
+  categoriaId?: string | null;
 }
 
 export class ActualizarProductoServicioDto extends PartialType(CrearProductoServicioDto) {}

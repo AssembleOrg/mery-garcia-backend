@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import type { ReporteServicios, TrabajadoraReporte } from './reporte-servicios.service';
-
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
+import { fechaDMY } from '../../common/utils/fechas';
 
 const ROSA = rgb(0.83, 0.55, 0.62);
 const ROSA_SUAVE = rgb(0.98, 0.92, 0.94);
@@ -14,9 +10,9 @@ const GRIS_CLARO = rgb(0.6, 0.6, 0.6);
 const NEGRO = rgb(0.29, 0.21, 0.25);
 const LINEA = rgb(0.9, 0.85, 0.87);
 
+/** \"2026-09-15\" → \"15/09/2026\" */
 function fechaLarga(iso: string): string {
-  const [a, m, d] = iso.split('-').map(Number);
-  return `${d} de ${MESES[m - 1]} de ${a}`;
+  return fechaDMY(iso);
 }
 
 function pesos(n: number): string {
@@ -165,6 +161,31 @@ export class ReporteServiciosPdfService {
     dibujarDerecha(page, pesos(t.totalServiciosARS), colARS, y - 6, 9, negrita, NEGRO);
     dibujarDerecha(page, dolares(t.totalServiciosUSD), colUSD, y - 6, 9, negrita, NEGRO);
     y -= 26;
+
+    // ── Por categoría (A, B, C...) ──
+    if (t.categorias.length > 0) {
+      if (y - 30 - t.categorias.length * 14 < margen) { ctx.nuevaPagina(); page = ctx.rePage(); y = ctx.getY(); }
+      page.drawText('Por categoría', { x: margen, y, size: 11, font: negrita, color: NEGRO });
+      y -= 16;
+      page.drawText('Categoría', { x: margen, y, size: 8, font: negrita, color: GRIS });
+      page.drawText('Cant.', { x: colCant, y, size: 8, font: negrita, color: GRIS });
+      dibujarDerecha(page, 'Monto ARS', colARS, y, 8, negrita, GRIS);
+      dibujarDerecha(page, 'Monto USD', colUSD, y, 8, negrita, GRIS);
+      y -= 4;
+      page.drawLine({ start: { x: margen, y }, end: { x: ancho - margen, y }, thickness: 0.5, color: LINEA });
+      y -= 12;
+      for (const c of t.categorias) {
+        const sinCat = c.nombre === null;
+        page.drawText(c.nombre ?? 'Sin categoría', {
+          x: margen, y, size: 9, font: sinCat ? fuente : negrita, color: sinCat ? GRIS : NEGRO,
+        });
+        page.drawText(String(c.cantidad), { x: colCant, y, size: 9, font: fuente, color: NEGRO });
+        dibujarDerecha(page, pesos(c.montoARS), colARS, y, 9, fuente, NEGRO);
+        dibujarDerecha(page, dolares(c.montoUSD), colUSD, y, 9, fuente, NEGRO);
+        y -= 14;
+      }
+      y -= 12;
+    }
 
     // ── Señas por medio de pago ──
     if (y - 60 < margen) { ctx.nuevaPagina(); page = ctx.rePage(); y = ctx.getY(); }

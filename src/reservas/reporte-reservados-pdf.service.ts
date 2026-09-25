@@ -2,11 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
 import type { FilaReservado, ReporteReservados } from './reporte-reservados.service';
 import type { Coincidencia } from './servicio-tokens';
+import { fechaDMY } from '../common/utils/fechas';
 
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
 const NEGRO = rgb(0.29, 0.21, 0.25);
 const GRIS = rgb(0.42, 0.36, 0.4);
 const GRIS_CLARO = rgb(0.6, 0.6, 0.6);
@@ -29,14 +26,14 @@ const ETIQUETA_ESTADO: Record<string, string> = {
   SIN_USAR: 'Sin usar',
 };
 
+/** \"2026-09-15\" → \"15/09/2026\" */
 function fechaLarga(iso: string): string {
-  const [a, m, d] = iso.split('-').map(Number);
-  return `${d} de ${MESES[m - 1]} de ${a}`;
+  return fechaDMY(iso);
 }
 function fechaCorta(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
-  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
 }
 function estadoDe(f: FilaReservado): string {
   return f.estadoUso === 'SIN_USAR' ? 'SIN_USAR' : (f.coincidencia ?? 'INDETERMINADO');

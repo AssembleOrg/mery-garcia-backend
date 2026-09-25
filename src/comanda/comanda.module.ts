@@ -7,6 +7,9 @@ import { ItemComanda } from './entities/ItemComanda.entity';
 import { TipoItem } from './entities/TipoItem.entity';
 import { ProductoServicio } from './entities/productoServicio.entity';
 import { UnidadNegocio } from './entities/unidadNegocio.entity';
+import { CategoriaServicio } from './entities/categoriaServicio.entity';
+import { CategoriaServicioController } from './controllers/categoria-servicio.controller';
+import { CategoriaServicioService } from './services/categoria-servicio.service';
 import { Movimiento } from './entities/movimiento.entity';
 import { Descuento } from './entities/descuento.entity';
 import { TipoItemController } from './controllers/tipo-item.controller';
@@ -42,6 +45,7 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
       TipoItem,
       ProductoServicio,
       UnidadNegocio,
+      CategoriaServicio,
       Movimiento,
       Descuento,
       Egreso,
@@ -62,6 +66,7 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
     TipoItemController,
     ProductoServicioController,
     UnidadNegocioController,
+    CategoriaServicioController,
     ItemComandaController,
     MovimientoController,
   ],
@@ -70,6 +75,7 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
     TipoItemService,
     ProductoServicioService,
     UnidadNegocioService,
+    CategoriaServicioService,
     ItemComandaService,
     MovimientoService,
     ReporteServiciosService,

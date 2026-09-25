@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, FindOptionsWhere, SelectQueryBuilder } from 'typeorm';
 import { ProductoServicio, TipoProductoServicio } from '../entities/productoServicio.entity';
 import { UnidadNegocio } from '../entities/unidadNegocio.entity';
+import { CategoriaServicio } from '../entities/categoriaServicio.entity';
 import { 
   CrearProductoServicioDto, 
   ActualizarProductoServicioDto, 
@@ -44,7 +45,7 @@ export class ProductoServicioService {
 
   async obtenerTodas(): Promise<ProductoServicio[]> {
     return this.productoServicioRepository.find({
-      relations: ['unidadNegocio'],
+      relations: ['unidadNegocio', 'categoria'],
       order: {
         nombre: 'ASC',
       },
@@ -85,9 +86,11 @@ export class ProductoServicioService {
         throw new NotFoundException(`Unidad de negocio con ID ${crearProductoServicioDto.unidadNegocioId} no encontrada`);
       }
 
+      const { categoriaId, ...datos } = crearProductoServicioDto;
       const productoServicio = this.productoServicioRepository.create({
-        ...crearProductoServicioDto,
-        unidadNegocio
+        ...datos,
+        unidadNegocio,
+        categoria: categoriaId ? ({ id: categoriaId } as CategoriaServicio) : null,
       });
       
       const guardado = await this.productoServicioRepository.save(productoServicio);
@@ -112,7 +115,8 @@ export class ProductoServicioService {
 
       const queryBuilder = this.productoServicioRepository
         .createQueryBuilder('productoServicio')
-        .leftJoinAndSelect('productoServicio.unidadNegocio', 'unidadNegocio');
+        .leftJoinAndSelect('productoServicio.unidadNegocio', 'unidadNegocio')
+        .leftJoinAndSelect('productoServicio.categoria', 'categoria');
 
       // Aplicar filtros
       this.aplicarFiltros(queryBuilder, filtros);
@@ -145,7 +149,7 @@ export class ProductoServicioService {
     try {
       const productoServicio = await this.productoServicioRepository.findOne({
         where: { id },
-        relations: ['unidadNegocio']
+        relations: ['unidadNegocio', 'categoria']
       });
 
       if (!productoServicio) {
@@ -198,7 +202,12 @@ export class ProductoServicioService {
         }
       }
 
-      Object.assign(productoServicio, actualizarDto);
+      const { categoriaId, ...datos } = actualizarDto;
+      Object.assign(productoServicio, datos);
+      // null = sacarlo de su categoría; undefined = no tocarla.
+      if (categoriaId !== undefined) {
+        productoServicio.categoria = categoriaId ? ({ id: categoriaId } as CategoriaServicio) : null;
+      }
       const actualizado = await this.productoServicioRepository.save(productoServicio);
 
 
@@ -266,7 +275,7 @@ export class ProductoServicioService {
     try {
       return await this.productoServicioRepository.find({
         where: { activo: true },
-        relations: ['unidadNegocio'],
+        relations: ['unidadNegocio', 'categoria'],
         order: { nombre: 'ASC' }
       });
     } catch (error) {
@@ -282,7 +291,7 @@ export class ProductoServicioService {
           unidadNegocio: { id: unidadNegocioId },
           activo: true 
         },
-        relations: ['unidadNegocio'],
+        relations: ['unidadNegocio', 'categoria'],
         order: { nombre: 'ASC' }
       });
     } catch (error) {

@@ -6,6 +6,7 @@ import type {
   FilaAsistencia,
   RevisionDia,
 } from '../ritmo.types';
+import { fechaDMY, fechaHoraAR } from '../../common/utils/fechas';
 
 const ESTADO: Record<EstadoDia, string> = {
   TRABAJADO: 'Trabajado',
@@ -22,15 +23,9 @@ const REVISION: Record<RevisionDia, string> = {
 };
 
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
-
-/** "2026-09-15" → "15/09" */
+/** "2026-09-15" → "15/09/2026" */
 function fechaCorta(dia: string): string {
-  const [, m, d] = dia.split('-');
-  return `${d}/${m}`;
+  return fechaDMY(dia);
 }
 
 /** "2026-09-15" → "Lun". Se parsea a mediodía UTC para no correr de día. */
@@ -38,10 +33,9 @@ function nombreDia(dia: string): string {
   return DIAS[new Date(`${dia}T12:00:00Z`).getUTCDay()];
 }
 
-/** "2026-09-15" → "15 de septiembre de 2026" */
+/** "2026-09-15" → "15/09/2026" */
 function fechaLarga(dia: string): string {
-  const [a, m, d] = dia.split('-').map(Number);
-  return `${d} de ${MESES[m - 1]} de ${a}`;
+  return fechaDMY(dia);
 }
 
 /** 485 → "8h 05m". Los negativos salen con signo. */
@@ -151,7 +145,7 @@ export class AsistenciaPdfService {
     );
     ctx.y -= 13;
 
-    const emitido = new Date().toLocaleString('es-AR', { timeZone: datos.timezone });
+    const emitido = fechaHoraAR(new Date(), false, datos.timezone);
     ctx.page.drawText(`Emitido el ${emitido}  ·  horarios en ${datos.timezone}`, {
       x: this.margen,
       y: ctx.y,

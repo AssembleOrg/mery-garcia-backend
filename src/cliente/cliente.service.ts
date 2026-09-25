@@ -13,6 +13,7 @@ import { PrepagoGuardado } from 'src/personal/entities/PrepagoGuardado.entity';
 import { TipoMoneda } from 'src/enums/TipoMoneda.enum';
 import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { TipoPago } from 'src/enums/TipoPago.enum';
+import { fechaAR } from '../common/utils/fechas';
 
 @Injectable()
 export class ClienteService {
@@ -333,7 +334,7 @@ export class ClienteService {
   ): Promise<void> {
     const redondear = (n: number) => Math.round(Number(n) * 100) / 100;
     const nuevoTotal = Math.max(0, redondear(nuevoTotalRaw));
-    const fecha = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const fecha = fechaAR();
     const nota = (previa: string | undefined, texto: string) =>
       [previa?.trim(), `${texto} (${fecha})`].filter(Boolean).join(' · ');
     const aplicarServicios = (seña: PrepagoGuardado) => {

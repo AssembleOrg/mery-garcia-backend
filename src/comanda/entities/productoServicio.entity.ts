@@ -9,8 +9,10 @@ import {
   VersionColumn,
   Index,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { UnidadNegocio } from './unidadNegocio.entity';
+import { CategoriaServicio } from './categoriaServicio.entity';
 import { TimezoneTransformer } from 'src/common/transformers/timezone.transformer';
 
 export enum TipoProductoServicio {
@@ -39,6 +41,14 @@ export class ProductoServicio {
     onDelete: 'RESTRICT',
   })
   unidadNegocio: UnidadNegocio;
+
+  /** Categoría del servicio (A, B, C...). Opcional; los productos no llevan. */
+  @ManyToOne(() => CategoriaServicio, (c) => c.servicios, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'categoria_id' })
+  categoria?: CategoriaServicio | null;
 
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
