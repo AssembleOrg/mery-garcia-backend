@@ -28,6 +28,7 @@ import { PrepagoGuardadoModule } from './prepago-guardado/prepago-guardado.modul
 import { RitmoModule } from './ritmo/ritmo.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ReservasModule } from './reservas/reservas.module';
+import { ContableModule } from './contable/contable.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { ReservasModule } from './reservas/reservas.module';
     RitmoModule,
     WhatsappModule,
     ReservasModule,
+    ContableModule,
   ],
   controllers: [AppController],
   providers: [
