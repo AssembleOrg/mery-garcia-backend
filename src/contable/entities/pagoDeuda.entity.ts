@@ -13,6 +13,7 @@ import {
 import { NumericTransformer } from '../../common/transformers/numeric.transformer';
 import { Deuda } from './deuda.entity';
 import { ComprobantePago } from './comprobantePago.entity';
+import { Adelanto } from './adelanto.entity';
 
 /**
  * Pago (total o parcial) que descuenta el saldo de una deuda. Va en la moneda
@@ -39,6 +40,18 @@ export class PagoDeuda {
     transformer: NumericTransformer,
   })
   monto: number;
+
+  /**
+   * Si viene de un adelanto: no es plata nueva, es saldo a favor descontado.
+   * Borrarla devuelve el monto al adelanto.
+   */
+  @Index()
+  @Column({ type: 'uuid', nullable: true })
+  adelantoId: string | null;
+
+  @ManyToOne(() => Adelanto, (a) => a.aplicaciones, { nullable: true })
+  @JoinColumn({ name: 'adelantoId' })
+  adelanto: Adelanto | null;
 
   /** Día del pago (YYYY-MM-DD). */
   @Column({ type: 'date' })

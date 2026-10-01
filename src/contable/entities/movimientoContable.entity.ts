@@ -19,6 +19,10 @@ export enum TipoMovimientoContable {
   PAGO_ELIMINADO = 'PAGO_ELIMINADO',
   COMPROBANTE_AGREGADO = 'COMPROBANTE_AGREGADO',
   COMPROBANTE_ELIMINADO = 'COMPROBANTE_ELIMINADO',
+  ADELANTO_REGISTRADO = 'ADELANTO_REGISTRADO',
+  ADELANTO_EDITADO = 'ADELANTO_EDITADO',
+  ADELANTO_ELIMINADO = 'ADELANTO_ELIMINADO',
+  ADELANTO_APLICADO = 'ADELANTO_APLICADO',
 }
 
 /**
@@ -43,6 +47,9 @@ export class MovimientoContable {
 
   @Column({ type: 'uuid', nullable: true })
   pagoId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  adelantoId: string | null;
 
   @Column({ type: 'varchar', length: 3, nullable: true })
   moneda: string | null;

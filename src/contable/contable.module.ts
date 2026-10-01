@@ -5,6 +5,7 @@ import { Deuda } from './entities/deuda.entity';
 import { PagoDeuda } from './entities/pagoDeuda.entity';
 import { ComprobantePago } from './entities/comprobantePago.entity';
 import { MovimientoContable } from './entities/movimientoContable.entity';
+import { Adelanto } from './entities/adelanto.entity';
 import { ContableController } from './contable.controller';
 import { ContableService } from './contable.service';
 
@@ -17,6 +18,7 @@ import { ContableService } from './contable.service';
       PagoDeuda,
       ComprobantePago,
       MovimientoContable,
+      Adelanto,
     ]),
   ],
   controllers: [ContableController],

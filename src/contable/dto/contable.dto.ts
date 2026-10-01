@@ -1,6 +1,12 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  OmitType,
+  PartialType,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsIn,
@@ -101,9 +107,96 @@ export class CrearDeudaDto {
   @IsString()
   @MaxLength(2000)
   notas?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Descontar al toque el saldo a favor (adelantos) del acreedor en esa moneda',
+  })
+  @IsOptional()
+  @IsBoolean()
+  aplicarAdelantos?: boolean;
 }
 
-export class ActualizarDeudaDto extends PartialType(CrearDeudaDto) {}
+export class ActualizarDeudaDto extends PartialType(
+  OmitType(CrearDeudaDto, ['aplicarAdelantos'] as const),
+) {}
+
+export class CrearAdelantoDto {
+  @ApiProperty()
+  @IsUUID()
+  acreedorId: string;
+
+  @ApiProperty({ example: 'Comisiones octubre', maxLength: 200 })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  concepto: string;
+
+  @ApiProperty({ enum: TipoMoneda })
+  @IsEnum(TipoMoneda)
+  moneda: TipoMoneda;
+
+  @ApiProperty({ example: 50000 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(999_999_999_999)
+  monto: number;
+
+  @ApiPropertyOptional({
+    example: '2026-10-01',
+    description: 'Por defecto, hoy',
+  })
+  @IsOptional()
+  @Matches(DIA, { message: 'fecha debe ser AAAA-MM-DD' })
+  fecha?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-10',
+    description: 'Cuándo se espera liquidar (orientativo)',
+  })
+  @IsOptional()
+  @ValidateIf((o) => o.fechaEstimada !== null)
+  @Matches(DIA, { message: 'fechaEstimada debe ser AAAA-MM-DD' })
+  fechaEstimada?: string | null;
+
+  @ApiPropertyOptional({ example: 'Efectivo' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  metodo?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  nota?: string;
+}
+
+export class ActualizarAdelantoDto extends PartialType(CrearAdelantoDto) {}
+
+export class AplicarAdelantosDto {
+  @ApiPropertyOptional({
+    description: 'Cuánto descontar; por defecto, todo lo posible',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  monto?: number;
+}
+
+export class FiltroAdelantosDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  acreedorId?: string;
+
+  @ApiPropertyOptional({ enum: ['disponibles', 'todos'] })
+  @IsOptional()
+  @IsIn(['disponibles', 'todos'])
+  estado?: 'disponibles' | 'todos';
+}
 
 export class CrearPagoDto {
   @ApiProperty({ example: 50000 })

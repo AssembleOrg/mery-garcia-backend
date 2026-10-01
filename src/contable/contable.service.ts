@@ -12,20 +12,26 @@ import { Acreedor, TipoAcreedor } from './entities/acreedor.entity';
 import { Deuda } from './entities/deuda.entity';
 import { PagoDeuda } from './entities/pagoDeuda.entity';
 import { ComprobantePago } from './entities/comprobantePago.entity';
+import { Adelanto } from './entities/adelanto.entity';
 import {
   MovimientoContable,
   TipoMovimientoContable as T,
 } from './entities/movimientoContable.entity';
 import {
   ActualizarAcreedorDto,
+  ActualizarAdelantoDto,
   ActualizarDeudaDto,
   ActualizarPagoDto,
+  AplicarAdelantosDto,
   CrearAcreedorDto,
+  CrearAdelantoDto,
   CrearDeudaDto,
   CrearPagoDto,
+  FiltroAdelantosDto,
   FiltroDeudasDto,
   FiltroHistorialDto,
 } from './dto/contable.dto';
+import { fechaDMY } from '../common/utils/fechas';
 
 export interface UsuarioContable {
   id: string;
@@ -50,10 +56,22 @@ export interface Totales {
   deuda: number;
   pagado: number;
   saldo: number;
+  /** Adelantos todavía sin aplicar. */
+  aFavor: number;
+  /** saldo - aFavor: lo que de verdad falta pagar (negativo = se adelantó de más). */
+  neto: number;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const totalesVacios = (): Totales => ({ deuda: 0, pagado: 0, saldo: 0 });
+const totalesVacios = (): Totales => ({
+  deuda: 0,
+  pagado: 0,
+  saldo: 0,
+  aFavor: 0,
+  neto: 0,
+});
+const claveFavor = (acreedorId: string, moneda: string) =>
+  `${acreedorId}:${moneda}`;
 
 /** Hoy en Argentina, "AAAA-MM-DD". */
 function hoyAR(): string {
@@ -103,6 +121,8 @@ export class ContableService {
     private readonly comprobantes: Repository<ComprobantePago>,
     @InjectRepository(MovimientoContable)
     private readonly historial: Repository<MovimientoContable>,
+    @InjectRepository(Adelanto)
+    private readonly adelantos: Repository<Adelanto>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -119,7 +139,8 @@ export class ContableService {
     const qb = this.deudas
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.acreedor', 'a')
-      .leftJoinAndSelect('d.pagos', 'p', 'p.deletedAt IS NULL');
+      .leftJoinAndSelect('d.pagos', 'p', 'p.deletedAt IS NULL')
+      .leftJoinAndSelect('p.adelanto', 'pad');
     if (opciones.conComprobantes) qb.leftJoinAndSelect('p.comprobantes', 'c');
     if (opciones.acreedorId)
       qb.andWhere('d.acreedorId = :acreedorId', {
@@ -135,6 +156,95 @@ export class ContableService {
       .getMany();
   }
 
+  /** Adelantos vivos con sus aplicaciones vivas, del más viejo al más nuevo. */
+  private async cargarAdelantos(
+    opciones: {
+      acreedorId?: string;
+      adelantoId?: string;
+      conDetalle?: boolean;
+    } = {},
+  ): Promise<Adelanto[]> {
+    const qb = this.adelantos
+      .createQueryBuilder('ad')
+      .leftJoinAndSelect('ad.acreedor', 'ac')
+      .leftJoinAndSelect('ad.aplicaciones', 'ap', 'ap.deletedAt IS NULL');
+    if (opciones.conDetalle) {
+      qb.leftJoinAndSelect('ap.deuda', 'apd').leftJoinAndSelect(
+        'ad.comprobantes',
+        'adc',
+      );
+    }
+    if (opciones.acreedorId)
+      qb.andWhere('ad.acreedorId = :acreedorId', {
+        acreedorId: opciones.acreedorId,
+      });
+    if (opciones.adelantoId)
+      qb.andWhere('ad.id = :adelantoId', { adelantoId: opciones.adelantoId });
+    return qb
+      .orderBy('ad.fecha', 'ASC')
+      .addOrderBy('ad.createdAt', 'ASC')
+      .getMany();
+  }
+
+  private disponible(a: Adelanto): { aplicado: number; disponible: number } {
+    const aplicado = r2(
+      (a.aplicaciones ?? []).reduce((s, p) => s + Number(p.monto), 0),
+    );
+    return { aplicado, disponible: r2(Number(a.monto) - aplicado) };
+  }
+
+  /** acreedor:moneda → saldo a favor sin aplicar. */
+  private mapaFavor(adelantos: Adelanto[]): Map<string, number> {
+    const mapa = new Map<string, number>();
+    for (const a of adelantos) {
+      const { disponible } = this.disponible(a);
+      if (disponible <= 0) continue;
+      const k = claveFavor(a.acreedorId, a.moneda);
+      mapa.set(k, r2((mapa.get(k) ?? 0) + disponible));
+    }
+    return mapa;
+  }
+
+  private serializarAdelanto(a: Adelanto) {
+    const { aplicado, disponible } = this.disponible(a);
+    return {
+      id: a.id,
+      acreedorId: a.acreedorId,
+      acreedor: a.acreedor
+        ? {
+            id: a.acreedor.id,
+            nombre: a.acreedor.nombre,
+            tipo: a.acreedor.tipo,
+          }
+        : undefined,
+      concepto: a.concepto,
+      moneda: a.moneda,
+      monto: Number(a.monto),
+      fecha: a.fecha,
+      fechaEstimada: a.fechaEstimada,
+      metodo: a.metodo,
+      nota: a.nota,
+      creadoPorNombre: a.creadoPorNombre,
+      createdAt: a.createdAt,
+      editableHasta: editableHasta(a.createdAt),
+      editable: dentroDeVentana(a.createdAt),
+      aplicado,
+      disponible,
+      aplicaciones: (a.aplicaciones ?? []).map((p) => ({
+        pagoId: p.id,
+        deudaId: p.deudaId,
+        deudaConcepto: p.deuda?.concepto ?? null,
+        monto: Number(p.monto),
+        fecha: p.fecha,
+        createdAt: p.createdAt,
+        editable: dentroDeVentana(p.createdAt),
+      })),
+      comprobantes: (a.comprobantes ?? []).map((c) =>
+        this.serializarComprobante(c),
+      ),
+    };
+  }
+
   private calcular(d: Deuda, hoy = hoyAR()) {
     const pagado = r2((d.pagos ?? []).reduce((s, p) => s + Number(p.monto), 0));
     const saldo = r2(Number(d.monto) - pagado);
@@ -145,7 +255,11 @@ export class ContableService {
   }
 
   /** Deuda lista para la API: saldo, estado y hasta cuándo se puede corregir. */
-  private serializarDeuda(d: Deuda, hoy = hoyAR()) {
+  private serializarDeuda(
+    d: Deuda,
+    hoy = hoyAR(),
+    favor?: Map<string, number>,
+  ) {
     const calc = this.calcular(d, hoy);
     return {
       id: d.id,
@@ -168,6 +282,8 @@ export class ContableService {
       editableHasta: editableHasta(d.createdAt),
       editable: dentroDeVentana(d.createdAt),
       ...calc,
+      /** Saldo a favor del acreedor en esta moneda que se podría descontar. */
+      aFavorDisponible: favor?.get(claveFavor(d.acreedorId, d.moneda)) ?? 0,
       pagos: (d.pagos ?? []).map((p) => this.serializarPago(p)),
     };
   }
@@ -180,6 +296,14 @@ export class ContableService {
       fecha: p.fecha,
       metodo: p.metodo,
       nota: p.nota,
+      adelantoId: p.adelantoId,
+      adelanto: p.adelanto
+        ? {
+            id: p.adelanto.id,
+            concepto: p.adelanto.concepto,
+            fecha: p.adelanto.fecha,
+          }
+        : null,
       creadoPorNombre: p.creadoPorNombre,
       createdAt: p.createdAt,
       editableHasta: editableHasta(p.createdAt),
@@ -194,6 +318,7 @@ export class ContableService {
     return {
       id: c.id,
       pagoId: c.pagoId,
+      adelantoId: c.adelantoId,
       nombre: c.nombre,
       mimeType: c.mimeType,
       tamanio: c.tamanio,
@@ -202,7 +327,10 @@ export class ContableService {
     };
   }
 
-  private totalesPorMoneda(deudas: Deuda[]): Record<TipoMoneda, Totales> {
+  private totalesPorMoneda(
+    deudas: Deuda[],
+    adelantos: Adelanto[] = [],
+  ): Record<TipoMoneda, Totales> {
     const t = { ARS: totalesVacios(), USD: totalesVacios() } as Record<
       TipoMoneda,
       Totales
@@ -214,6 +342,11 @@ export class ContableService {
       m.pagado = r2(m.pagado + pagado);
       m.saldo = r2(m.saldo + saldo);
     }
+    for (const a of adelantos) {
+      const m = t[a.moneda] ?? (t[a.moneda] = totalesVacios());
+      m.aFavor = r2(m.aFavor + this.disponible(a).disponible);
+    }
+    for (const m of Object.values(t)) m.neto = r2(m.saldo - m.aFavor);
     return t;
   }
 
@@ -222,7 +355,10 @@ export class ContableService {
   /** KPIs, serie mensual y rankings para el tablero. */
   async resumen(meses = 12) {
     const hoy = hoyAR();
-    const deudas = await this.cargarDeudas();
+    const [deudas, adelantos] = await Promise.all([
+      this.cargarDeudas(),
+      this.cargarAdelantos(),
+    ]);
     const mesActual = hoy.slice(0, 7);
     const mesAnterior = this.sumarMeses(mesActual, -1);
 
@@ -241,6 +377,9 @@ export class ContableService {
           pagadoMes: 0,
           pagadoMesAnterior: 0,
           porcentajeCancelado: 0,
+          saldoAFavor: 0,
+          adelantosAbiertos: 0,
+          saldoNeto: 0,
         },
       ]),
     ) as unknown as Record<TipoMoneda, Record<string, number>>;
@@ -255,6 +394,9 @@ export class ContableService {
       USD: { deuda: 0, pagos: 0, saldo: 0 },
     }));
     const idxMes = new Map(mesesSerie.map((m, i) => [m, i]));
+    // En la serie, "pagos" es plata que salió (pagos directos + adelantos) y
+    // "saldo" es el neto: deuda acumulada menos esa plata. Los descuentos de
+    // adelanto no cuentan como salida: la plata ya salió con el adelanto.
     // Saldo arrastrado de antes del primer mes de la serie.
     const arrastre = { ARS: 0, USD: 0 } as Record<TipoMoneda, number>;
 
@@ -284,6 +426,7 @@ export class ContableService {
         serie[idxMes.get(mesDeuda)!][m].deuda += Number(d.monto);
 
       for (const p of d.pagos ?? []) {
+        if (p.adelantoId) continue;
         const mesPago = p.fecha.slice(0, 7);
         if (mesPago === mesActual) k.pagadoMes += Number(p.monto);
         if (mesPago === mesAnterior) k.pagadoMesAnterior += Number(p.monto);
@@ -305,8 +448,26 @@ export class ContableService {
       }
     }
 
+    for (const a of adelantos) {
+      const m = a.moneda;
+      const k = kpis[m];
+      if (!k) continue;
+      const { disponible } = this.disponible(a);
+      if (disponible > 0) {
+        k.saldoAFavor += disponible;
+        k.adelantosAbiertos++;
+      }
+      const mesAd = a.fecha.slice(0, 7);
+      if (mesAd === mesActual) k.pagadoMes += Number(a.monto);
+      if (mesAd === mesAnterior) k.pagadoMesAnterior += Number(a.monto);
+      if (mesAd < primerMes) arrastre[m] -= Number(a.monto);
+      else if (idxMes.has(mesAd))
+        serie[idxMes.get(mesAd)!][m].pagos += Number(a.monto);
+    }
+
     for (const m of MONEDAS) {
       const k = kpis[m];
+      k.saldoNeto = k.saldo - k.saldoAFavor;
       for (const key of Object.keys(k)) k[key] = r2(k[key]);
       k.acreedoresConSaldo = [...porAcreedor.values()].filter(
         (a) => a[m] > 0,
@@ -329,6 +490,16 @@ export class ContableService {
       .slice(0, 8)
       .map((d) => ({ ...d, pagos: undefined }));
 
+    // Adelantos con saldo sin aplicar: lo que se espera liquidar pronto.
+    const adelantosPendientes = adelantos
+      .map((a) => this.serializarAdelanto(a))
+      .filter((a) => a.disponible > 0)
+      .sort((a, b) =>
+        (a.fechaEstimada ?? '9999').localeCompare(b.fechaEstimada ?? '9999'),
+      )
+      .slice(0, 8)
+      .map((a) => ({ ...a, aplicaciones: undefined, comprobantes: undefined }));
+
     const actividad = await this.historial.find({
       order: { createdAt: 'DESC' },
       take: 8,
@@ -340,6 +511,7 @@ export class ContableService {
       serie,
       acreedores: [...porAcreedor.values()],
       proximosVencimientos,
+      adelantosPendientes,
       actividad,
     };
   }
@@ -354,7 +526,17 @@ export class ContableService {
 
   async listarAcreedores(buscar?: string) {
     const lista = await this.acreedores.find({ order: { nombre: 'ASC' } });
-    const deudas = await this.cargarDeudas();
+    const [deudas, adelantos] = await Promise.all([
+      this.cargarDeudas(),
+      this.cargarAdelantos(),
+    ]);
+    const adelantosPor = new Map<string, Adelanto[]>();
+    for (const a of adelantos) {
+      adelantosPor.set(a.acreedorId, [
+        ...(adelantosPor.get(a.acreedorId) ?? []),
+        a,
+      ]);
+    }
     const hoy = hoyAR();
     const porAcreedor = new Map<string, Deuda[]>();
     for (const d of deudas) {
@@ -373,14 +555,21 @@ export class ContableService {
       )
       .map((a) => {
         const propias = porAcreedor.get(a.id) ?? [];
+        const susAdelantos = adelantosPor.get(a.id) ?? [];
         const calcs = propias.map((d) => this.calcular(d, hoy));
-        const fechas = propias.flatMap((d) => [
-          new Date(d.createdAt).getTime(),
-          ...(d.pagos ?? []).map((p) => new Date(p.createdAt).getTime()),
-        ]);
+        const fechas = [
+          ...propias.flatMap((d) => [
+            new Date(d.createdAt).getTime(),
+            ...(d.pagos ?? []).map((p) => new Date(p.createdAt).getTime()),
+          ]),
+          ...susAdelantos.map((x) => new Date(x.createdAt).getTime()),
+        ];
         return {
           ...a,
-          totales: this.totalesPorMoneda(propias),
+          totales: this.totalesPorMoneda(propias, susAdelantos),
+          adelantosAbiertos: susAdelantos.filter(
+            (x) => this.disponible(x).disponible > 0,
+          ).length,
           cantidadDeudas: propias.length,
           deudasAbiertas: calcs.filter((c) => c.saldo > 0).length,
           deudasVencidas: calcs.filter((c) => c.vencida).length,
@@ -394,15 +583,18 @@ export class ContableService {
   async obtenerAcreedor(id: string) {
     const acreedor = await this.acreedores.findOne({ where: { id } });
     if (!acreedor) throw new NotFoundException('Acreedor no encontrado');
-    const deudas = await this.cargarDeudas({
-      acreedorId: id,
-      conComprobantes: true,
-    });
+    const [deudas, adelantos] = await Promise.all([
+      this.cargarDeudas({ acreedorId: id, conComprobantes: true }),
+      this.cargarAdelantos({ acreedorId: id, conDetalle: true }),
+    ]);
     const hoy = hoyAR();
+    const favor = this.mapaFavor(adelantos);
     return {
       ...acreedor,
-      totales: this.totalesPorMoneda(deudas),
-      deudas: deudas.map((d) => this.serializarDeuda(d, hoy)),
+      totales: this.totalesPorMoneda(deudas, adelantos),
+      deudas: deudas.map((d) => this.serializarDeuda(d, hoy, favor)),
+      // Los más nuevos primero para mostrar.
+      adelantos: adelantos.reverse().map((a) => this.serializarAdelanto(a)),
     };
   }
 
@@ -479,10 +671,12 @@ export class ContableService {
   async eliminarAcreedor(id: string, u: UsuarioContable) {
     const acreedor = await this.acreedores.findOne({ where: { id } });
     if (!acreedor) throw new NotFoundException('Acreedor no encontrado');
-    const cantidad = await this.deudas.count({ where: { acreedorId: id } });
+    const cantidad =
+      (await this.deudas.count({ where: { acreedorId: id } })) +
+      (await this.adelantos.count({ where: { acreedorId: id } }));
     if (cantidad > 0) {
       throw new ConflictException(
-        `"${acreedor.nombre}" tiene ${cantidad} deuda(s) registradas; no se puede borrar para no perder el historial.`,
+        `"${acreedor.nombre}" tiene ${cantidad} deuda(s) o adelanto(s) registrados; no se puede borrar para no perder el historial.`,
       );
     }
     await this.dataSource.transaction(async (m) => {
@@ -511,12 +705,15 @@ export class ContableService {
 
   async listarDeudas(filtro: FiltroDeudasDto) {
     const hoy = hoyAR();
-    let lista = (
-      await this.cargarDeudas({
+    const [deudas, adelantos] = await Promise.all([
+      this.cargarDeudas({
         acreedorId: filtro.acreedorId,
         conComprobantes: true,
-      })
-    ).map((d) => this.serializarDeuda(d, hoy));
+      }),
+      this.cargarAdelantos({ acreedorId: filtro.acreedorId }),
+    ]);
+    const favor = this.mapaFavor(adelantos);
+    let lista = deudas.map((d) => this.serializarDeuda(d, hoy, favor));
     if (filtro.moneda) lista = lista.filter((d) => d.moneda === filtro.moneda);
     switch (filtro.estado ?? 'todas') {
       case 'abiertas':
@@ -538,7 +735,10 @@ export class ContableService {
       conComprobantes: true,
     });
     if (!deuda) throw new NotFoundException('Deuda no encontrada');
-    return this.serializarDeuda(deuda);
+    const favor = this.mapaFavor(
+      await this.cargarAdelantos({ acreedorId: deuda.acreedorId }),
+    );
+    return this.serializarDeuda(deuda, hoyAR(), favor);
   }
 
   async crearDeuda(dto: CrearDeudaDto, u: UsuarioContable) {
@@ -571,6 +771,7 @@ export class ContableService {
         monto: creada.monto,
         descripcion: `Nueva deuda con "${acreedor.nombre}": ${creada.concepto}`,
       });
+      if (dto.aplicarAdelantos) await this.aplicarEn(m, creada.id, u);
       return creada.id;
     });
     return this.obtenerDeuda(id);
@@ -797,6 +998,11 @@ export class ContableService {
 
   async actualizarPago(id: string, dto: ActualizarPagoDto, u: UsuarioContable) {
     const pago = await this.pagoEditable(id);
+    if (pago.adelantoId) {
+      throw new ConflictException(
+        'Es un descuento de adelanto: borralo (vuelve al saldo a favor) y volvé a aplicarlo.',
+      );
+    }
     const antes = { ...pago, deuda: undefined };
 
     await this.dataSource.transaction(async (m) => {
@@ -852,7 +1058,10 @@ export class ContableService {
         pagoId: id,
         moneda: pago.deuda.moneda,
         monto: pago.monto,
-        descripcion: `Pago de "${pago.deuda.concepto}" borrado (vuelve al saldo)`,
+        adelantoId: pago.adelantoId,
+        descripcion: pago.adelantoId
+          ? `Descuento de adelanto deshecho en "${pago.deuda.concepto}" (vuelve al saldo a favor)`
+          : `Pago de "${pago.deuda.concepto}" borrado (vuelve al saldo)`,
         detalle: {
           monto: pago.monto,
           fecha: pago.fecha,
@@ -863,6 +1072,273 @@ export class ContableService {
     });
   }
 
+  // ───────────────────────────────── Adelantos ─────────────────────────────────
+
+  async listarAdelantos(filtro: FiltroAdelantosDto) {
+    const lista = (
+      await this.cargarAdelantos({
+        acreedorId: filtro.acreedorId,
+        conDetalle: true,
+      })
+    )
+      .reverse()
+      .map((a) => this.serializarAdelanto(a));
+    return filtro.estado === 'disponibles'
+      ? lista.filter((a) => a.disponible > 0)
+      : lista;
+  }
+
+  private async obtenerAdelanto(id: string) {
+    const [a] = await this.cargarAdelantos({
+      adelantoId: id,
+      conDetalle: true,
+    });
+    if (!a) throw new NotFoundException('Adelanto no encontrado');
+    return this.serializarAdelanto(a);
+  }
+
+  async crearAdelanto(dto: CrearAdelantoDto, u: UsuarioContable) {
+    const acreedor = await this.acreedores.findOne({
+      where: { id: dto.acreedorId },
+    });
+    if (!acreedor) throw new NotFoundException('Acreedor no encontrado');
+    const fecha = dto.fecha ?? hoyAR();
+    const id = await this.dataSource.transaction(async (m) => {
+      const a = await m.save(
+        m.create(Adelanto, {
+          acreedorId: acreedor.id,
+          concepto: dto.concepto.trim(),
+          moneda: dto.moneda,
+          monto: r2(dto.monto),
+          fecha,
+          fechaEstimada: dto.fechaEstimada ?? null,
+          metodo: limpiar(dto.metodo),
+          nota: limpiar(dto.nota),
+          creadoPorId: u.id,
+          creadoPorNombre: u.nombre,
+        }),
+      );
+      await this.registrar(m, u, {
+        tipo: T.ADELANTO_REGISTRADO,
+        acreedorId: acreedor.id,
+        adelantoId: a.id,
+        moneda: a.moneda,
+        monto: a.monto,
+        descripcion: `Adelanto a "${acreedor.nombre}" a cuenta de ${a.concepto}`,
+      });
+      return a.id;
+    });
+    return this.obtenerAdelanto(id);
+  }
+
+  /** Sólo en las primeras 24 h; el monto no puede bajar de lo ya aplicado. */
+  async actualizarAdelanto(
+    id: string,
+    dto: ActualizarAdelantoDto,
+    u: UsuarioContable,
+  ) {
+    const [a] = await this.cargarAdelantos({ adelantoId: id });
+    if (!a) throw new NotFoundException('Adelanto no encontrado');
+    // concepto, fecha estimada y nota se corrigen siempre; lo que mueve plata, 24 h.
+    const tocaSensibles =
+      (dto.monto !== undefined && r2(dto.monto) !== Number(a.monto)) ||
+      (dto.moneda !== undefined && dto.moneda !== a.moneda) ||
+      (dto.acreedorId !== undefined && dto.acreedorId !== a.acreedorId) ||
+      (dto.fecha !== undefined && dto.fecha !== a.fecha) ||
+      (dto.metodo !== undefined && limpiar(dto.metodo) !== a.metodo);
+    if (tocaSensibles && !dentroDeVentana(a.createdAt)) {
+      throw new ConflictException(
+        'Pasaron más de 24 h desde el adelanto: sólo se pueden cambiar concepto, fecha estimada y nota.',
+      );
+    }
+    const { aplicado } = this.disponible(a);
+    const antes = { ...a, acreedor: undefined, aplicaciones: undefined };
+
+    if (dto.acreedorId !== undefined && dto.acreedorId !== a.acreedorId) {
+      if (aplicado > 0)
+        throw new BadRequestException(
+          'El adelanto ya se descontó de una deuda: no se puede cambiar de acreedor.',
+        );
+      const nuevo = await this.acreedores.findOne({
+        where: { id: dto.acreedorId },
+      });
+      if (!nuevo) throw new NotFoundException('Acreedor no encontrado');
+      a.acreedorId = nuevo.id;
+    }
+    if (dto.moneda !== undefined && dto.moneda !== a.moneda) {
+      if (aplicado > 0)
+        throw new BadRequestException(
+          'El adelanto ya se descontó de una deuda: no se puede cambiar la moneda.',
+        );
+      a.moneda = dto.moneda;
+    }
+    if (dto.monto !== undefined) {
+      if (r2(dto.monto) < aplicado)
+        throw new BadRequestException(
+          `El monto no puede ser menor a lo ya descontado (${fmtMonto(aplicado, a.moneda)}).`,
+        );
+      a.monto = r2(dto.monto);
+    }
+    if (dto.concepto !== undefined) a.concepto = dto.concepto.trim();
+    if (dto.fecha !== undefined) a.fecha = dto.fecha;
+    if (dto.fechaEstimada !== undefined)
+      a.fechaEstimada = dto.fechaEstimada ?? null;
+    if (dto.metodo !== undefined) a.metodo = limpiar(dto.metodo);
+    if (dto.nota !== undefined) a.nota = limpiar(dto.nota);
+
+    const cambios = this.diferencias(antes, a, [
+      'acreedorId',
+      'concepto',
+      'moneda',
+      'monto',
+      'fecha',
+      'fechaEstimada',
+      'metodo',
+      'nota',
+    ]);
+    if (!cambios) return this.obtenerAdelanto(id);
+    await this.dataSource.transaction(async (m) => {
+      await m.update(Adelanto, id, {
+        acreedorId: a.acreedorId,
+        concepto: a.concepto,
+        moneda: a.moneda,
+        monto: a.monto,
+        fecha: a.fecha,
+        fechaEstimada: a.fechaEstimada,
+        metodo: a.metodo,
+        nota: a.nota,
+      });
+      await this.registrar(m, u, {
+        tipo: T.ADELANTO_EDITADO,
+        acreedorId: a.acreedorId,
+        adelantoId: id,
+        moneda: a.moneda,
+        monto: a.monto,
+        descripcion: `Adelanto "${a.concepto}" editado`,
+        detalle: cambios,
+      });
+    });
+    return this.obtenerAdelanto(id);
+  }
+
+  async eliminarAdelanto(id: string, u: UsuarioContable) {
+    const [a] = await this.cargarAdelantos({ adelantoId: id });
+    if (!a) throw new NotFoundException('Adelanto no encontrado');
+    if (!dentroDeVentana(a.createdAt)) {
+      throw new ConflictException(
+        'Sólo se puede borrar un adelanto en las primeras 24 h.',
+      );
+    }
+    if ((a.aplicaciones ?? []).length > 0) {
+      throw new ConflictException(
+        'El adelanto ya se descontó de una deuda: deshacé primero ese descuento.',
+      );
+    }
+    await this.dataSource.transaction(async (m) => {
+      await m.softDelete(Adelanto, id);
+      await this.registrar(m, u, {
+        tipo: T.ADELANTO_ELIMINADO,
+        acreedorId: a.acreedorId,
+        adelantoId: id,
+        moneda: a.moneda,
+        monto: a.monto,
+        descripcion: `Adelanto "${a.concepto}" borrado`,
+        detalle: {
+          concepto: a.concepto,
+          monto: a.monto,
+          moneda: a.moneda,
+          fecha: a.fecha,
+        },
+      });
+    });
+  }
+
+  /** Descuenta de una deuda el saldo a favor del acreedor en esa moneda. */
+  async aplicarAdelantos(
+    deudaId: string,
+    dto: AplicarAdelantosDto,
+    u: UsuarioContable,
+  ) {
+    await this.dataSource.transaction(async (m) => {
+      const aplicado = await this.aplicarEn(m, deudaId, u, dto.monto);
+      if (aplicado <= 0)
+        throw new BadRequestException(
+          'No hay saldo a favor para descontar (o la deuda ya está saldada).',
+        );
+    });
+    return this.obtenerDeuda(deudaId);
+  }
+
+  /**
+   * Aplica adelantos (del más viejo al más nuevo) hasta cubrir el saldo de la
+   * deuda o el tope pedido. Bloquea deuda y adelantos para que dos cargas
+   * simultáneas no usen la misma plata. Devuelve cuánto descontó.
+   */
+  private async aplicarEn(
+    m: EntityManager,
+    deudaId: string,
+    u: UsuarioContable,
+    tope?: number,
+  ): Promise<number> {
+    const { deuda, saldo } = await this.saldoBloqueado(m, deudaId);
+    let restante = r2(Math.min(saldo, tope ?? Infinity));
+    if (restante <= 0) return 0;
+
+    const adelantos = await m
+      .createQueryBuilder(Adelanto, 'ad')
+      .setLock('pessimistic_write')
+      .where('ad.acreedorId = :acreedorId', { acreedorId: deuda.acreedorId })
+      .andWhere('ad.moneda = :moneda', { moneda: deuda.moneda })
+      .andWhere('ad.deletedAt IS NULL')
+      .orderBy('ad.fecha', 'ASC')
+      .addOrderBy('ad.createdAt', 'ASC')
+      .getMany();
+
+    let total = 0;
+    for (const a of adelantos) {
+      if (restante <= 0) break;
+      const { usado } = (await m
+        .createQueryBuilder(PagoDeuda, 'p')
+        .select('COALESCE(SUM(p.monto), 0)', 'usado')
+        .where('p.adelantoId = :id', { id: a.id })
+        .andWhere('p.deletedAt IS NULL')
+        .getRawOne<{ usado: string }>())!;
+      const disponible = r2(Number(a.monto) - Number(usado));
+      if (disponible <= 0) continue;
+      const monto = r2(Math.min(disponible, restante));
+      const pago = await m.save(
+        m.create(PagoDeuda, {
+          deudaId,
+          adelantoId: a.id,
+          monto,
+          fecha: hoyAR(),
+          metodo: 'Adelanto',
+          nota: `Descontado del adelanto "${a.concepto}" del ${fechaDMY(a.fecha)}`,
+          creadoPorId: u.id,
+          creadoPorNombre: u.nombre,
+        }),
+      );
+      restante = r2(restante - monto);
+      total = r2(total + monto);
+      const sobra = r2(disponible - monto);
+      await this.registrar(m, u, {
+        tipo: T.ADELANTO_APLICADO,
+        acreedorId: deuda.acreedorId,
+        deudaId,
+        pagoId: pago.id,
+        adelantoId: a.id,
+        moneda: deuda.moneda,
+        monto,
+        descripcion:
+          `Adelanto "${a.concepto}" descontado de "${deuda.concepto}"` +
+          (sobra > 0
+            ? ` (quedan ${fmtMonto(sobra, deuda.moneda)} a favor)`
+            : ''),
+      });
+    }
+    return total;
+  }
+
   // ──────────────────────────────── Comprobantes ───────────────────────────────
 
   /** Se pueden sumar comprobantes a un pago en cualquier momento (la factura llega después). */
@@ -871,13 +1347,58 @@ export class ContableService {
     archivos: Express.Multer.File[],
     u: UsuarioContable,
   ) {
-    if (!archivos?.length) throw new BadRequestException('Falta el archivo.');
     const pago = await this.pagos.findOne({
       where: { id: pagoId },
       relations: { deuda: true },
     });
     if (!pago) throw new NotFoundException('Pago no encontrado');
+    await this.guardarArchivos(
+      archivos,
+      u,
+      { pagoId },
+      {
+        acreedorId: pago.deuda.acreedorId,
+        deudaId: pago.deudaId,
+        pagoId,
+        de: `al pago de "${pago.deuda.concepto}"`,
+      },
+    );
+    return this.obtenerPago(pagoId);
+  }
 
+  async agregarComprobantesAdelanto(
+    adelantoId: string,
+    archivos: Express.Multer.File[],
+    u: UsuarioContable,
+  ) {
+    const a = await this.adelantos.findOne({ where: { id: adelantoId } });
+    if (!a) throw new NotFoundException('Adelanto no encontrado');
+    await this.guardarArchivos(
+      archivos,
+      u,
+      { adelantoId },
+      {
+        acreedorId: a.acreedorId,
+        adelantoId,
+        de: `al adelanto "${a.concepto}"`,
+      },
+    );
+    return this.obtenerAdelanto(adelantoId);
+  }
+
+  private async guardarArchivos(
+    archivos: Express.Multer.File[],
+    u: UsuarioContable,
+    destino: { pagoId: string } | { adelantoId: string },
+    ref: {
+      acreedorId: string;
+      deudaId?: string;
+      pagoId?: string;
+      adelantoId?: string;
+      de: string;
+    },
+  ) {
+    if (!archivos?.length) throw new BadRequestException('Falta el archivo.');
     for (const a of archivos) {
       if (!MIME_COMPROBANTE.test(a.mimetype)) {
         throw new BadRequestException(
@@ -890,10 +1411,10 @@ export class ContableService {
         );
       }
     }
-    const existentes = await this.comprobantes.count({ where: { pagoId } });
+    const existentes = await this.comprobantes.count({ where: destino });
     if (existentes + archivos.length > MAX_COMPROBANTES_POR_PAGO) {
       throw new BadRequestException(
-        `Máximo ${MAX_COMPROBANTES_POR_PAGO} comprobantes por pago.`,
+        `Máximo ${MAX_COMPROBANTES_POR_PAGO} comprobantes por movimiento.`,
       );
     }
 
@@ -901,7 +1422,7 @@ export class ContableService {
       for (const a of archivos) {
         const c = await m.save(
           m.create(ComprobantePago, {
-            pagoId,
+            ...destino,
             nombre: nombreArchivo(a.originalname),
             mimeType: a.mimetype,
             tamanio: a.size,
@@ -910,14 +1431,14 @@ export class ContableService {
         );
         await this.registrar(m, u, {
           tipo: T.COMPROBANTE_AGREGADO,
-          acreedorId: pago.deuda.acreedorId,
-          deudaId: pago.deudaId,
-          pagoId,
-          descripcion: `Comprobante "${c.nombre}" adjuntado al pago de "${pago.deuda.concepto}"`,
+          acreedorId: ref.acreedorId,
+          deudaId: ref.deudaId,
+          pagoId: ref.pagoId,
+          adelantoId: ref.adelantoId,
+          descripcion: `Comprobante "${c.nombre}" adjuntado ${ref.de}`,
         });
       }
     });
-    return this.obtenerPago(pagoId);
   }
 
   async comprobante(id: string) {
@@ -933,7 +1454,7 @@ export class ContableService {
   async eliminarComprobante(id: string, u: UsuarioContable) {
     const c = await this.comprobantes.findOne({
       where: { id },
-      relations: { pago: { deuda: true } },
+      relations: { pago: { deuda: true }, adelanto: true },
     });
     if (!c) throw new NotFoundException('Comprobante no encontrado');
     if (!dentroDeVentana(c.createdAt)) {
@@ -945,9 +1466,10 @@ export class ContableService {
       await m.delete(ComprobantePago, id);
       await this.registrar(m, u, {
         tipo: T.COMPROBANTE_ELIMINADO,
-        acreedorId: c.pago?.deuda?.acreedorId ?? null,
+        acreedorId: c.pago?.deuda?.acreedorId ?? c.adelanto?.acreedorId ?? null,
         deudaId: c.pago?.deudaId ?? null,
         pagoId: c.pagoId,
+        adelantoId: c.adelantoId,
         descripcion: `Comprobante "${c.nombre}" quitado`,
       });
     });
@@ -978,6 +1500,7 @@ export class ContableService {
       acreedorId?: string | null;
       deudaId?: string | null;
       pagoId?: string | null;
+      adelantoId?: string | null;
       moneda?: string | null;
       monto?: number | null;
       detalle?: Record<string, unknown> | null;
@@ -989,6 +1512,7 @@ export class ContableService {
       acreedorId: datos.acreedorId ?? null,
       deudaId: datos.deudaId ?? null,
       pagoId: datos.pagoId ?? null,
+      adelantoId: datos.adelantoId ?? null,
       moneda: datos.moneda ?? null,
       monto: datos.monto ?? null,
       detalle: (datos.detalle ?? null) as MovimientoContable['detalle'] &
