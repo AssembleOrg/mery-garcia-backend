@@ -12,6 +12,7 @@ import digitalOceanConfig from './config/digitalOcean.config';
 import ritmoConfig from './config/ritmo.config';
 import whatsappConfig from './config/whatsapp.config';
 import bookingConfig from './config/booking.config';
+import anthropicConfig from './config/anthropic.config';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -29,6 +30,7 @@ import { RitmoModule } from './ritmo/ritmo.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ReservasModule } from './reservas/reservas.module';
 import { ContableModule } from './contable/contable.module';
+import { ValidacionComandasModule } from './validacion-comandas/validacion-comandas.module';
 
 @Module({
   imports: [
@@ -43,6 +45,7 @@ import { ContableModule } from './contable/contable.module';
         ritmoConfig,
         whatsappConfig,
         bookingConfig,
+        anthropicConfig,
       ],
     }),
 
@@ -86,6 +89,7 @@ import { ContableModule } from './contable/contable.module';
     WhatsappModule,
     ReservasModule,
     ContableModule,
+    ValidacionComandasModule,
   ],
   controllers: [AppController],
   providers: [
