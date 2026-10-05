@@ -31,6 +31,7 @@ import {
   type UsuarioValidacion,
 } from './validacion-comandas.service';
 import { CrearLoteDto } from './dto/crear-lote.dto';
+import { RevisionDto } from './dto/revision.dto';
 
 /**
  * Validación de comandas en papel con IA. Herramienta interna, sólo admin, sin
@@ -107,6 +108,30 @@ export class ValidacionComandasController {
   @Post('paginas/:id/releer')
   releer(@Param('id', ParseUUIDPipe) id: string) {
     return this.servicio.releerPagina(id);
+  }
+
+  /** Una persona aprueba la hoja o marca un error real. No modifica la comanda. */
+  @Roles(RolPersonal.ADMIN)
+  @Post('paginas/:id/revision')
+  revisar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RevisionDto,
+    @Req() req: Request,
+  ) {
+    return this.servicio.revisar(id, dto.decision, dto.nota, this.usuario(req));
+  }
+
+  @Roles(RolPersonal.ADMIN)
+  @Delete('paginas/:id/revision')
+  deshacerRevision(@Param('id', ParseUUIDPipe) id: string) {
+    return this.servicio.deshacerRevision(id);
+  }
+
+  /** Gemelo digital: la comanda de ingreso del sistema por número ("01-11089"). Sólo lectura. */
+  @Roles(RolPersonal.ADMIN)
+  @Get('comandas/:numero')
+  gemelo(@Param('numero') numero: string) {
+    return this.servicio.gemelo(numero);
   }
 
   /** Bytes de la hoja escaneada. Respuesta cruda (no pasa por el sobre {status, data}). */

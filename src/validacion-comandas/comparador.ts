@@ -15,9 +15,18 @@ export interface ComandaSistema {
   estado: string;
   cliente: string | null;
   observaciones: string | null;
-  items: { nombre: string; trabajador: string | null }[];
+  items: {
+    nombre: string;
+    trabajador: string | null;
+    cantidad?: number;
+    subtotal?: number;
+  }[];
   pagos: { tipo: string; moneda: string; monto: number }[];
-  senas: { moneda: string; monto: number }[];
+  senas: { moneda: string; monto: number; tipoPago?: string }[];
+  /** Sólo para mostrar el gemelo digital: */
+  precioPesos?: number;
+  precioDolar?: number;
+  cargadaPor?: string | null;
 }
 
 export type CampoDiferencia =

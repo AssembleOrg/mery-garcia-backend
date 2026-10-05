@@ -19,6 +19,14 @@ export enum EstadoPagina {
   ERROR = 'ERROR',
 }
 
+/** Decisión de una persona sobre la hoja (la IA sólo propone). */
+export enum RevisionPagina {
+  /** Revisada a mano: está bien (aunque la IA haya marcado diferencias). */
+  APROBADA = 'APROBADA',
+  /** Revisada a mano: hay un error real a corregir en el sistema. */
+  CON_ERROR = 'CON_ERROR',
+}
+
 export enum ResultadoPagina {
   OK = 'OK',
   REVISAR = 'REVISAR',
@@ -53,6 +61,11 @@ export class PaginaValidacion {
   /** Los bytes se leen sólo al mostrar la imagen o al mandarla a la IA. */
   @Column({ type: 'bytea', select: false })
   imagen: Buffer;
+
+  /** sha256 de la imagen: si la misma foto ya se leyó, no se vuelve a pagar. */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  huella: string | null;
 
   @Column({ type: 'varchar', length: 12, default: EstadoPagina.PENDIENTE })
   estado: EstadoPagina;
@@ -99,6 +112,29 @@ export class PaginaValidacion {
 
   @Column({ type: 'timestamptz', nullable: true })
   leidaAt: Date | null;
+
+  /** Hoja de la que se copió la lectura (misma foto ya leída antes, sin costo). */
+  @Column({ type: 'uuid', nullable: true })
+  lecturaDeId: string | null;
+
+  /**
+   * Revisión humana sobre la comparación actual. Se borra si la comparación
+   * cambia (al releer o volver a comparar), porque ya no es la misma.
+   */
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  revision: RevisionPagina | null;
+
+  @Column({ type: 'text', nullable: true })
+  revisionNota: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  revisadoPorId: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  revisadoPorNombre: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  revisadoAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
