@@ -15,6 +15,7 @@ import { completar, primerNombre } from './personalizar';
 import { aConversacionDto, etiquetaContacto } from './whatsapp.dto';
 import {
   AutorMensaje,
+  EstadoEnvio,
   DireccionMensaje,
   EstadoConversacion,
   MotivoEspera,
@@ -305,9 +306,14 @@ export class BotService {
       ? ((await this.contactos.clientesDe([conv.contacto])).get(conv.contacto.clienteId) ?? null)
       : null;
     const nombre = primerNombre(cliente?.nombre, conv.contacto?.nombreWhatsapp);
+    // Se presenta si la clienta sólo saludó (aunque la charla venga de antes) o si
+    // el bot todavía no le llegó a escribir nada en esta charla (un envío fallido no cuenta).
     const primero =
       (opciones.presentar ?? true) &&
-      !(await this.mensajesRepo.exist({ where: { conversacionId: conv.id, autor: AutorMensaje.BOT } }));
+      (opciones.soloSaludo ||
+        !(await this.mensajesRepo.exist({
+          where: { conversacionId: conv.id, autor: AutorMensaje.BOT, estadoEnvio: Not(EstadoEnvio.FALLIDO) },
+        })));
     if (!primero) return completar(texto, nombre);
     const presentacion = cliente ? cfg.mensajes.presentacionClienta : cfg.mensajes.presentacion;
     const cuerpo = opciones.soloSaludo ? cfg.mensajes.bienvenida : texto;
