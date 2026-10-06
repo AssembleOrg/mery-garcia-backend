@@ -11,6 +11,7 @@ import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
 import { esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
+import { completar, primerNombre } from './personalizar';
 import { aConversacionDto, etiquetaContacto } from './whatsapp.dto';
 import {
   AutorMensaje,
@@ -232,7 +233,7 @@ export class BotService {
           { id: conv.id },
           { noEntendidosSeguidos: conv.noEntendidosSeguidos + 1, esperandoOpcionMenu: true },
         );
-        await this.mensajes.enviarTexto(conv, cfg.mensajes.noEntendi, AutorMensaje.BOT);
+        await this.mensajes.enviarTexto(conv, await this.personalizar(conv, cfg.mensajes.noEntendi), AutorMensaje.BOT);
         return;
       }
 
@@ -256,7 +257,9 @@ export class BotService {
     horario: { dias: number[]; desde: string; hasta: string },
   ): Promise<void> {
     await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, esperandoOpcionMenu: false });
-    await this.mensajes.enviarTexto(conv, respuesta, AutorMensaje.BOT, null, clave);
+    // Si la clienta sólo saludó en su primer mensaje, la presentación + bienvenida reemplaza al saludo.
+    const texto = await this.personalizar(conv, respuesta, { soloSaludo: clave === 'SALUDO' });
+    await this.mensajes.enviarTexto(conv, texto, AutorMensaje.BOT, null, clave);
     if (derivaAPersona) {
       // La respuesta ya dice que sigue una persona; sólo si está cerrado se avisa el horario.
       await this.derivar(conv, MotivoEspera.RESPUESTA_DERIVA, [], { fueraDeHorario, horario });
@@ -287,6 +290,32 @@ export class BotService {
    * Saca la charla del bot. Manda los textos dados y, si el local está
    * cerrado, el aviso de horario. Queda ESPERANDO hasta que alguien la tome.
    */
+  /**
+   * Completa {nombre} y, si es el primer mensaje del bot en la charla, antepone
+   * la presentación (con quién está hablando). `soloSaludo`: la clienta sólo
+   * saludó, así que en vez del texto va presentación + bienvenida.
+   */
+  private async personalizar(
+    conv: WhatsappConversacion,
+    texto: string,
+    opciones: { presentar?: boolean; soloSaludo?: boolean } = {},
+  ): Promise<string> {
+    const cfg = await this.config.obtener();
+    const cliente = conv.contacto?.clienteId
+      ? ((await this.contactos.clientesDe([conv.contacto])).get(conv.contacto.clienteId) ?? null)
+      : null;
+    const nombre = primerNombre(cliente?.nombre, conv.contacto?.nombreWhatsapp);
+    const primero =
+      (opciones.presentar ?? true) &&
+      !(await this.mensajesRepo.exist({ where: { conversacionId: conv.id, autor: AutorMensaje.BOT } }));
+    if (!primero) return completar(texto, nombre);
+    const presentacion = cliente ? cfg.mensajes.presentacionClienta : cfg.mensajes.presentacion;
+    const cuerpo = opciones.soloSaludo ? cfg.mensajes.bienvenida : texto;
+    return completar(`${presentacion}
+
+${cuerpo}`, nombre);
+  }
+
   private async derivar(
     conv: WhatsappConversacion,
     motivo: MotivoEspera,
@@ -313,7 +342,11 @@ export class BotService {
     this.rafagas.get(conv.id) && clearTimeout(this.rafagas.get(conv.id)!.timer);
     this.rafagas.delete(conv.id);
 
-    for (const t of textos) await this.mensajes.enviarTexto(conv, t, AutorMensaje.BOT);
+    for (const [i, t] of textos.entries()) {
+      // Con el bot apagado el texto ya saluda: no se agrega la presentación.
+      const presentar = i === 0 && motivo !== MotivoEspera.BOT_APAGADO;
+      await this.mensajes.enviarTexto(conv, await this.personalizar(conv, t, { presentar }), AutorMensaje.BOT);
+    }
     if (!estaAbierto(horario)) {
       const aviso = textoFuera.replace('{horario}', describirHorario(horario));
       await this.mensajes.enviarTexto(conv, aviso, AutorMensaje.BOT);

@@ -11,6 +11,12 @@ export interface HorarioAtencion {
 
 /** Textos fijos del bot. Editables desde Configuración > WhatsApp. */
 export interface MensajesBot {
+  /** Primer mensaje de cada charla: con quién está hablando. {nombre} = nombre de la clienta. */
+  presentacion: string;
+  /** Igual, para alguien que ya es clienta (está en el sistema con ese celular). */
+  presentacionClienta: string;
+  /** Después de la presentación, si la clienta sólo saludó. */
+  bienvenida: string;
   saludo: string;
   noEntendi: string;
   derivacion: string;
@@ -23,6 +29,10 @@ export interface MensajesBot {
 }
 
 export const MENSAJES_POR_DEFECTO: MensajesBot = {
+  presentacion: '¡Hola {nombre}! 💕 Te escribimos del *Estudio Mery García*.',
+  presentacionClienta: '¡Hola {nombre}! 💕 Qué lindo tenerte de nuevo por acá. Te escribimos del *Estudio Mery García*.',
+  bienvenida:
+    '¿En qué te podemos ayudar? Podés consultarnos por servicios, precios, turnos o formaciones ✨',
   saludo: 'Hola! Como estas? 💕 ¿En qué te puedo ayudar?',
   noEntendi:
     'Perdón, no te entendí bien 🙈 ¿Sobre qué querés consultar?\n\n' +
