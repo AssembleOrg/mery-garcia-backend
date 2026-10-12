@@ -13,7 +13,7 @@ import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
 import { esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
-import { completar, primerNombre } from './personalizar';
+import { completar, primerNombre, sinSaludo } from './personalizar';
 import { aConversacionDto, etiquetaContacto } from './whatsapp.dto';
 import {
   AutorMensaje,
@@ -442,13 +442,17 @@ export class BotService {
     const nombre = primerNombre(cliente?.nombre, conv.contacto?.nombreWhatsapp);
     // Se presenta si la clienta sólo saludó (aunque la charla venga de antes) o si
     // el bot todavía no le llegó a escribir nada en esta charla (un envío fallido no cuenta).
-    const primero =
-      (opciones.presentar ?? true) &&
-      (opciones.soloSaludo ||
-        !(await this.botYaEscribio(conv.id)));
-    if (!primero) return completar(texto, nombre);
+    const yaEscribio = await this.botYaEscribio(conv.id);
+    const primero = (opciones.presentar ?? true) && (opciones.soloSaludo || !yaEscribio);
+    if (!primero) {
+      // Charla ya empezada: sin el "Hola, ¿cómo estás?" con que arrancan las
+      // respuestas de la tabla. Un primer mensaje sin presentación (bot apagado)
+      // sí conserva su saludo.
+      return completar(yaEscribio ? sinSaludo(texto) : texto, nombre);
+    }
     const presentacion = cliente ? cfg.mensajes.presentacionClienta : cfg.mensajes.presentacion;
-    const cuerpo = opciones.soloSaludo ? cfg.mensajes.bienvenida : texto;
+    // La presentación ya saluda: la respuesta va sin su propio saludo.
+    const cuerpo = opciones.soloSaludo ? cfg.mensajes.bienvenida : sinSaludo(texto);
     return completar(`${presentacion}
 
 ${cuerpo}`, nombre);
