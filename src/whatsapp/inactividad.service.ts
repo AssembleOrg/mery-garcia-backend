@@ -13,10 +13,16 @@ const AVISO_MS = 60 * 60_000;
 const CIERRE_TRAS_AVISO_MS = 60 * 60_000;
 /** Charla del bot sin mensajes durante 12 h → se cierra en silencio. */
 const CIERRE_BOT_MS = 12 * 60 * 60_000;
+/** Charla esperando a una persona sin que nadie la tome → vuelve al bot y queda marcada. */
+const ESPERA_MAXIMA_MS = 60 * 60_000;
 
 /**
- * Cierre por inactividad. Las charlas ESPERANDO no se tocan: quedan en cola
- * hasta que alguien del equipo las tome, aunque pase la noche.
+ * Cierre por inactividad y vencimiento de la espera.
+ *
+ * Una charla ESPERANDO que nadie toma en una hora vuelve sola al bot y queda
+ * marcada como vencida: así la clienta no queda hablándole a nadie y el
+ * equipo tiene la lista de lo que se le pasó. El reloj corre de corrido,
+ * también fuera del horario de atención.
  */
 @Injectable()
 export class InactividadService {
@@ -36,6 +42,7 @@ export class InactividadService {
     if (this.corriendo) return;
     this.corriendo = true;
     try {
+      await this.vencerEsperando();
       await this.avisarAtendidas();
       await this.cerrarAtendidas();
       await this.cerrarDelBot();
@@ -43,6 +50,22 @@ export class InactividadService {
       this.logger.error(`Error en el cierre por inactividad: ${(error as Error).message}`);
     } finally {
       this.corriendo = false;
+    }
+  }
+
+  private async vencerEsperando(): Promise<void> {
+    const limite = new Date(Date.now() - ESPERA_MAXIMA_MS);
+    const filas = await this.conversaciones.find({
+      where: { estado: EstadoConversacion.ESPERANDO, esperandoDesde: LessThan(limite) },
+      order: { esperandoDesde: 'ASC' },
+      take: 50,
+    });
+    for (const conv of filas) {
+      try {
+        await this.bot.vencerEspera(conv);
+      } catch (error) {
+        this.logger.error(`No se pudo vencer la espera de ${conv.id}: ${(error as Error).message}`);
+      }
     }
   }
 

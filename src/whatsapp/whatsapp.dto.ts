@@ -39,6 +39,8 @@ export interface ConversacionDto {
   ultimoMensajeAt: string | null;
   ultimoEntranteAt: string | null;
   esperandoDesde: string | null;
+  /** Espera vencida sin revisar: cuándo venció, por qué esperaba y desde cuándo. */
+  vencida: { at: string; motivo: string | null; esperandoDesde: string | null } | null;
   iniciadaAt: string;
   cerradaAt: string | null;
   motivoCierre: MotivoCierre | null;
@@ -110,6 +112,13 @@ export function aConversacionDto(
     ultimoMensajeAt: iso(c.ultimoMensajeAt),
     ultimoEntranteAt: iso(c.ultimoEntranteAt),
     esperandoDesde: iso(c.esperandoDesde),
+    vencida: c.vencidaAt
+      ? {
+          at: iso(c.vencidaAt) as string,
+          motivo: c.vencidaMotivo,
+          esperandoDesde: iso(c.vencidaEsperandoDesde),
+        }
+      : null,
     iniciadaAt: iso(c.createdAt) as string,
     cerradaAt: iso(c.cerradaAt),
     motivoCierre: c.motivoCierre,

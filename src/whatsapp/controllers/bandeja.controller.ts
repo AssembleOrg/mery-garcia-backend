@@ -96,6 +96,12 @@ export class BandejaController {
   }
 
   @Roles(...EQUIPO)
+  @Post('conversaciones/:id/revisar-vencida')
+  revisarVencida(@Param('id', ParseUUIDPipe) id: string) {
+    return this.bandeja.revisarVencida(id);
+  }
+
+  @Roles(...EQUIPO)
   @Post('conversaciones/:id/devolver-bot')
   devolverBot(@Param('id', ParseUUIDPipe) id: string) {
     return this.bandeja.devolverAlBot(id);

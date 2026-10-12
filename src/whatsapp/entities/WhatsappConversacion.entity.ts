@@ -62,6 +62,24 @@ export class WhatsappConversacion {
   @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
   esperandoDesde: Date | null;
 
+  /**
+   * Marca de "espera vencida": la charla estuvo esperando a una persona más
+   * del tiempo límite, nadie la tomó y volvió sola al bot. Queda hasta que
+   * alguien del equipo la revisa (la toma, le escribe o la marca revisada).
+   * No depende del estado: una charla vencida puede estar con el bot o cerrada.
+   */
+  @Index('ix_whatsapp_conv_vencida')
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  vencidaAt: Date | null;
+
+  /** Por qué estaba esperando cuando venció (un MotivoEspera). */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  vencidaMotivo: string | null;
+
+  /** Desde cuándo esperaba cuando venció. */
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  vencidaEsperandoDesde: Date | null;
+
   @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
   avisoInactividadAt: Date | null;
 

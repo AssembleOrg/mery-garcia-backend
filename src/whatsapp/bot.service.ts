@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, Repository } from 'typeorm';
+import { WhatsappContacto } from './entities/WhatsappContacto.entity';
 import { WhatsappConversacion } from './entities/WhatsappConversacion.entity';
 import { WhatsappMensaje } from './entities/WhatsappMensaje.entity';
 import { ContactosService } from './contactos.service';
@@ -131,12 +132,7 @@ export class BotService {
 
     if (nueva) this.logger.log(`Charla nueva ${conv.id}`);
 
-    // El interruptor del chat (/meryon, /meryoff) manda sobre todo lo demás. Sin
-    // él: si la central tiene el modo prueba prendido el bot calla en este chat;
-    // si no, vale el interruptor general de la configuración de Mery.
-    const botPrendido =
-      contacto.botForzado ?? (this.modoCentral.pruebaActiva ? false : cfg.botActivo);
-    if (!botPrendido) {
+    if (!(await this.botPrendidoPara(contacto))) {
       await this.derivar(conv, MotivoEspera.BOT_APAGADO, [cfg.mensajes.botApagado]);
       return;
     }
@@ -166,6 +162,61 @@ export class BotService {
       return;
     }
     this.encolar(conv.id, limpio);
+  }
+
+  /**
+   * ¿El bot puede contestar en el chat de este contacto? El interruptor del
+   * chat (/meryon, /meryoff) manda sobre todo lo demás. Sin él: si la central
+   * tiene el modo prueba prendido el bot calla; si no, vale el interruptor
+   * general de la configuración de Mery.
+   */
+  async botPrendidoPara(contacto: WhatsappContacto): Promise<boolean> {
+    if (contacto.botForzado !== null && contacto.botForzado !== undefined) return contacto.botForzado;
+    if (this.modoCentral.pruebaActiva) return false;
+    return (await this.config.obtener()).botActivo;
+  }
+
+  /**
+   * La charla esperó a una persona más del tiempo límite y nadie la tomó:
+   * vuelve al bot para que la clienta no quede hablando sola, y queda marcada
+   * como vencida para que el equipo la revise.
+   *
+   * El bot no dice nada al volver: retoma con el próximo mensaje de la
+   * clienta. Devuelve false si no correspondía (el bot no puede contestar en
+   * ese chat, así que devolvérsela sería dejarla igual de sola).
+   */
+  async vencerEspera(conv: WhatsappConversacion): Promise<boolean> {
+    if (conv.estado !== EstadoConversacion.ESPERANDO) return false;
+    if (conv.motivoEspera === MotivoEspera.BOT_APAGADO) return false;
+    if (!(await this.botPrendidoPara(conv.contacto))) return false;
+
+    const motivo = conv.motivoEspera;
+    await this.conversaciones.update(
+      { id: conv.id, estado: EstadoConversacion.ESPERANDO },
+      {
+        estado: EstadoConversacion.BOT,
+        atendidaPorId: null,
+        motivoEspera: null,
+        esperandoDesde: null,
+        noEntendidosSeguidos: 0,
+        esperandoOpcionMenu: false,
+        avisoInactividadAt: null,
+        vencidaAt: new Date(),
+        vencidaMotivo: motivo,
+        vencidaEsperandoDesde: conv.esperandoDesde,
+      },
+    );
+
+    const cliente = (await this.contactos.clientesDe([conv.contacto])).get(conv.contacto.clienteId ?? '') ?? null;
+    await this.notificaciones.crear(
+      TipoNotificacion.ESPERANDO,
+      `${etiquetaContacto(conv.contacto, cliente)} esperó más de una hora sin respuesta`,
+      `${motivo ? MOTIVO_LEGIBLE[motivo] : 'Esperaba a una persona'}. Volvió al bot y quedó en "Vencidas".`,
+      conv.id,
+    );
+    await this.publicarConversacion(conv);
+    this.logger.log(`Charla ${conv.id} venció esperando (${motivo ?? 'sin motivo'}): vuelve al bot`);
+    return true;
   }
 
   /**

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, Repository } from 'typeorm';
+import { Brackets, In, IsNull, Not, Repository } from 'typeorm';
 import { WhatsappConversacion } from './entities/WhatsappConversacion.entity';
 import { WhatsappMensaje } from './entities/WhatsappMensaje.entity';
 import { ContactosService } from './contactos.service';
@@ -12,7 +12,7 @@ import { ConversacionDto, MensajeDto, aConversacionDto, aMensajeDto } from './wh
 import { soloDigitos } from './telefono';
 import { AutorMensaje, DireccionMensaje, EstadoConversacion, MotivoCierre } from './whatsapp.enums';
 
-export type FiltroEstado = 'ABIERTAS' | EstadoConversacion;
+export type FiltroEstado = 'ABIERTAS' | 'VENCIDAS' | EstadoConversacion;
 
 export interface ListarParams {
   estado?: FiltroEstado;
@@ -43,6 +43,9 @@ export const MIMES_PERMITIDOS = new Set([
   'application/pdf',
 ]);
 
+/** Limpia la marca de espera vencida. */
+const SIN_VENCIDA = { vencidaAt: null, vencidaMotivo: null, vencidaEsperandoDesde: null };
+
 /** Lo que hace una persona del equipo desde la web. */
 @Injectable()
 export class BandejaService {
@@ -60,7 +63,9 @@ export class BandejaService {
     private readonly eventos: WhatsappEventosService,
   ) {}
 
-  async listar(p: ListarParams): Promise<{ items: ConversacionDto[]; total: number; esperando: number; noLeidos: number }> {
+  async listar(
+    p: ListarParams,
+  ): Promise<{ items: ConversacionDto[]; total: number; esperando: number; vencidas: number; noLeidos: number }> {
     const porPagina = Math.min(Math.max(Number(p.porPagina) || 30, 1), 100);
     const pagina = Math.max(Number(p.pagina) || 1, 1);
 
@@ -69,7 +74,10 @@ export class BandejaService {
       .leftJoinAndSelect('c.contacto', 'contacto')
       .leftJoinAndSelect('c.atendidaPor', 'atendidaPor');
 
-    if (p.estado === 'ABIERTAS') {
+    if (p.estado === 'VENCIDAS') {
+      // Cualquier estado: una charla vencida puede haber seguido con el bot o cerrarse.
+      qb.andWhere('c.vencidaAt IS NOT NULL');
+    } else if (p.estado === 'ABIERTAS') {
       qb.andWhere('c.estado IN (:...abiertas)', { abiertas: [EstadoConversacion.ESPERANDO, EstadoConversacion.ATENDIDA] });
     } else if (p.estado && Object.values(EstadoConversacion).includes(p.estado)) {
       qb.andWhere('c.estado = :estado', { estado: p.estado });
@@ -97,19 +105,23 @@ export class BandejaService {
     // Los joins son many-to-one (una fila por charla): limit/offset directos.
     // skip/take con un ORDER BY por expresión dispara la consulta en dos
     // fases de TypeORM, que no sabe seleccionar el CASE.
-    qb.orderBy(
-      `CASE c.estado WHEN '${EstadoConversacion.ESPERANDO}' THEN 0 ELSE 1 END`,
-      'ASC',
-    )
-      .addOrderBy('c.ultimoMensajeAt', 'DESC', 'NULLS LAST')
+    if (p.estado === 'VENCIDAS') qb.orderBy('c.vencidaAt', 'ASC');
+    else {
+      qb.orderBy(
+        `CASE c.estado WHEN '${EstadoConversacion.ESPERANDO}' THEN 0 ELSE 1 END`,
+        'ASC',
+      );
+    }
+    qb.addOrderBy('c.ultimoMensajeAt', 'DESC', 'NULLS LAST')
       .offset((pagina - 1) * porPagina)
       .limit(porPagina);
 
     const [filas, total] = await qb.getManyAndCount();
     const items = await this.aDtos(filas);
 
-    const [esperando, noLeidosRaw] = await Promise.all([
+    const [esperando, vencidas, noLeidosRaw] = await Promise.all([
       this.conversaciones.count({ where: { estado: EstadoConversacion.ESPERANDO } }),
+      this.conversaciones.count({ where: { vencidaAt: Not(IsNull()) } }),
       this.conversaciones
         .createQueryBuilder('c')
         .select('COALESCE(SUM(c.noLeidos), 0)', 'total')
@@ -117,7 +129,7 @@ export class BandejaService {
         .getRawOne<{ total: string }>(),
     ]);
 
-    return { items, total, esperando, noLeidos: Number(noLeidosRaw?.total ?? 0) };
+    return { items, total, esperando, vencidas, noLeidos: Number(noLeidosRaw?.total ?? 0) };
   }
 
   async obtener(id: string): Promise<ConversacionDto> {
@@ -156,8 +168,20 @@ export class BandejaService {
     }
     await this.conversaciones.update(
       { id },
-      { estado: EstadoConversacion.ATENDIDA, atendidaPorId: operador.id, avisoInactividadAt: null },
+      {
+        estado: EstadoConversacion.ATENDIDA,
+        atendidaPorId: operador.id,
+        avisoInactividadAt: null,
+        ...SIN_VENCIDA,
+      },
     );
+    return this.publicar(id);
+  }
+
+  /** Alguien del equipo ya la miró: sale de "Vencidas" sin cambiar su estado. */
+  async revisarVencida(id: string): Promise<ConversacionDto> {
+    await this.cargar(id);
+    await this.conversaciones.update({ id }, SIN_VENCIDA);
     return this.publicar(id);
   }
 
@@ -260,7 +284,8 @@ export class BandejaService {
   /** Escribir en una charla la toma; en una cerrada, la reabre. */
   private async tomarAlEscribir(id: string, operador: Operador): Promise<WhatsappConversacion> {
     const conv = await this.cargar(id);
-    const cambios: Partial<WhatsappConversacion> = { avisoInactividadAt: null };
+    // Escribirle también cuenta como haberla revisado.
+    const cambios: Partial<WhatsappConversacion> = { avisoInactividadAt: null, ...SIN_VENCIDA };
     if (conv.estado !== EstadoConversacion.ATENDIDA || conv.atendidaPorId !== operador.id) {
       cambios.estado = EstadoConversacion.ATENDIDA;
       cambios.atendidaPorId = operador.id;
