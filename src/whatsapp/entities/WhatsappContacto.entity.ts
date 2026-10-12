@@ -37,6 +37,15 @@ export class WhatsappContacto {
   @Column({ type: 'uuid', nullable: true })
   clienteId: string | null;
 
+  /**
+   * Interruptor del bot para este chat, puesto con /meryon y /meryoff.
+   * null = sigue la configuración general (`WhatsappConfig.botActivo`);
+   * true/false = manda sobre ella, sólo en este chat. Sirve para probar el bot
+   * con chats puntuales mientras está apagado para el resto.
+   */
+  @Column({ type: 'boolean', nullable: true })
+  botForzado: boolean | null;
+
   @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   createdAt: Date;
 

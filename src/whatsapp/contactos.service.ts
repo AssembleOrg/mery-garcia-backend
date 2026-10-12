@@ -66,6 +66,11 @@ export class ContactosService {
     return this.contactos.findOne({ where: { chatJid } });
   }
 
+  /** Prende/apaga el bot sólo para este chat (/meryon, /meryoff). */
+  async forzarBot(contactoId: string, valor: boolean): Promise<void> {
+    await this.contactos.update({ id: contactoId }, { botForzado: valor });
+  }
+
   async vincularCliente(contactoId: string, clienteId: string | null): Promise<void> {
     await this.contactos.update({ id: contactoId }, { clienteId });
   }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import { WhatsappConversacion } from './entities/WhatsappConversacion.entity';
 import { WhatsappMensaje } from './entities/WhatsappMensaje.entity';
 import { ContactosService } from './contactos.service';
@@ -42,6 +42,22 @@ const DEBOUNCE_ESCRIBIENDO_MS = 5_000;
 /** Tope de un adjunto entrante que se guarda. */
 const MAX_ADJUNTO_BYTES = 16 * 1024 * 1024;
 const CHAT_JID_VALIDO = /^[0-9]{5,20}@(s\.whatsapp\.net|lid)$/;
+
+/**
+ * Comandos para prender/apagar el bot en un chat puntual. Se escriben en el
+ * chat que se quiere probar, tal cual, sin nada más.
+ */
+const COMANDO_BOT_ON = '/meryon';
+const COMANDO_BOT_OFF = '/meryoff';
+/** Marca la confirmación del comando, para que no cuente como una respuesta del bot. */
+const CLAVE_COMANDO_BOT = 'COMANDO_BOT';
+
+function comandoBot(texto: string | null): 'on' | 'off' | null {
+  const t = (texto ?? '').trim().toLowerCase();
+  if (t === COMANDO_BOT_ON) return 'on';
+  if (t === COMANDO_BOT_OFF) return 'off';
+  return null;
+}
 
 const MOTIVO_LEGIBLE: Record<MotivoEspera, string> = {
   [MotivoEspera.PIDIO_PERSONA]: 'Pidió hablar con una persona',
@@ -105,6 +121,16 @@ export class BotService {
 
     const { tipo, texto, adjunto } = await this.guardarContenido(e);
     await this.mensajes.registrarEntrante(conv, { tipo, texto, waMessageId: e.waMessageId, adjunto });
+
+    // /meryon y /meryoff: no son una consulta, así que no suman no leídos ni
+    // avisan a nadie. Van antes del chequeo de estado para que funcionen
+    // también en una charla que está esperando o que atiende una persona.
+    const comando = tipo === TipoMensaje.TEXTO ? comandoBot(texto) : null;
+    if (comando) {
+      await this.aplicarComandoBot(conv, comando);
+      return;
+    }
+
     await this.conversaciones.increment({ id: conv.id }, 'noLeidos', 1);
     conv.noLeidos += 1;
     await this.publicarConversacion(conv);
@@ -116,7 +142,9 @@ export class BotService {
 
     if (nueva) this.logger.log(`Charla nueva ${conv.id}`);
 
-    if (!cfg.botActivo) {
+    // El interruptor del chat (/meryon, /meryoff) manda sobre la config general.
+    const botPrendido = contacto.botForzado ?? cfg.botActivo;
+    if (!botPrendido) {
       await this.derivar(conv, MotivoEspera.BOT_APAGADO, [cfg.mensajes.botApagado]);
       return;
     }
@@ -146,6 +174,54 @@ export class BotService {
       return;
     }
     this.encolar(conv.id, limpio);
+  }
+
+  /**
+   * Prende o apaga el bot sólo en este chat. Al prenderlo la charla vuelve al
+   * bot aunque estuviera esperando o la atendiera una persona; al apagarlo se
+   * corta cualquier respuesta en camino y el próximo mensaje pasa a una
+   * persona, igual que con el bot apagado para todos.
+   */
+  private async aplicarComandoBot(conv: WhatsappConversacion, comando: 'on' | 'off'): Promise<void> {
+    const prender = comando === 'on';
+    await this.contactos.forzarBot(conv.contactoId, prender);
+    conv.contacto.botForzado = prender;
+
+    const rafaga = this.rafagas.get(conv.id);
+    if (rafaga) clearTimeout(rafaga.timer);
+    this.rafagas.delete(conv.id);
+
+    if (prender && conv.estado !== EstadoConversacion.BOT) {
+      await this.conversaciones.update(
+        { id: conv.id },
+        {
+          estado: EstadoConversacion.BOT,
+          atendidaPorId: null,
+          motivoEspera: null,
+          esperandoDesde: null,
+          noEntendidosSeguidos: 0,
+          esperandoOpcionMenu: false,
+          avisoInactividadAt: null,
+        },
+      );
+      conv.estado = EstadoConversacion.BOT;
+      conv.atendidaPorId = null;
+      conv.atendidaPor = null;
+      conv.motivoEspera = null;
+      conv.esperandoDesde = null;
+    }
+
+    this.logger.log(`Bot ${prender ? 'prendido' : 'apagado'} por comando en la charla ${conv.id}`);
+    await this.mensajes.enviarTexto(
+      conv,
+      prender
+        ? '✅ Bot prendido en este chat.'
+        : '⏸️ Bot apagado en este chat. No respondo hasta que lo vuelvan a prender con /meryon.',
+      AutorMensaje.BOT,
+      null,
+      CLAVE_COMANDO_BOT,
+    );
+    await this.publicarConversacion(conv);
   }
 
   /**
@@ -267,6 +343,21 @@ export class BotService {
     }
   }
 
+  /**
+   * ¿El bot ya le escribió algo en esta charla? Un envío fallido no cuenta, y
+   * la confirmación de /meryon o /meryoff tampoco: no es parte de la charla.
+   */
+  private botYaEscribio(conversacionId: string): Promise<boolean> {
+    const base = { conversacionId, autor: AutorMensaje.BOT, estadoEnvio: Not(EstadoEnvio.FALLIDO) };
+    // Dos condiciones porque en SQL `clave <> 'X'` descarta las filas con clave NULL.
+    return this.mensajesRepo.exist({
+      where: [
+        { ...base, respuestaClave: IsNull() },
+        { ...base, respuestaClave: Not(CLAVE_COMANDO_BOT) },
+      ],
+    });
+  }
+
   /** Últimos turnos de texto (sin el que se está clasificando), para respuestas cortas. */
   private async contextoReciente(conversacionId: string): Promise<TurnoPrevio[]> {
     const ultimos = await this.mensajesRepo.find({
@@ -278,7 +369,7 @@ export class BotService {
     return ultimos
       .slice(1)
       .reverse()
-      .filter((m) => m.texto)
+      .filter((m) => m.texto && !comandoBot(m.texto) && m.respuestaClave !== CLAVE_COMANDO_BOT)
       .map((m) => ({
         quien: m.autor === AutorMensaje.CLIENTA ? 'clienta' : 'bot',
         texto: recortar(m.texto as string).slice(0, 300),
@@ -311,9 +402,7 @@ export class BotService {
     const primero =
       (opciones.presentar ?? true) &&
       (opciones.soloSaludo ||
-        !(await this.mensajesRepo.exist({
-          where: { conversacionId: conv.id, autor: AutorMensaje.BOT, estadoEnvio: Not(EstadoEnvio.FALLIDO) },
-        })));
+        !(await this.botYaEscribio(conv.id)));
     if (!primero) return completar(texto, nombre);
     const presentacion = cliente ? cfg.mensajes.presentacionClienta : cfg.mensajes.presentacion;
     const cuerpo = opciones.soloSaludo ? cfg.mensajes.bienvenida : texto;
