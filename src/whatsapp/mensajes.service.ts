@@ -112,8 +112,9 @@ export class MensajesService {
   async enviarAdjunto(
     conv: WhatsappConversacion,
     adjunto: AdjuntoSaliente,
-    operadorId: string,
+    operadorId: string | null,
     caption: string | null,
+    respuestaClave: string | null = null,
   ): Promise<WhatsappMensaje> {
     const guardado = await this.guardarAdjunto(adjunto.mimeType, adjunto.datos);
     const esAudio = adjunto.mimeType.startsWith('audio/');
@@ -144,7 +145,7 @@ export class MensajesService {
       texto: caption,
       autor: AutorMensaje.OPERADOR,
       operadorId,
-      respuestaClave: null,
+      respuestaClave,
       waMessageId,
       estado,
       adjunto: {

@@ -16,4 +16,13 @@ export default registerAs('whatsapp', () => ({
     model: process.env.MINIMAX_MODEL ?? 'MiniMax-M3',
     timeoutMs: Number(process.env.MINIMAX_TIMEOUT_MS ?? 15_000),
   },
+  /**
+   * Central de chatbots (console-central). Opcional: sin estas tres variables
+   * el bot funciona igual que siempre y no le reporta nada a nadie.
+   */
+  central: {
+    url: (process.env.CENTRAL_URL ?? '').replace(/\/$/, ''),
+    botId: process.env.CENTRAL_BOT_ID ?? '',
+    token: process.env.CENTRAL_BOT_TOKEN ?? '',
+  },
 }));

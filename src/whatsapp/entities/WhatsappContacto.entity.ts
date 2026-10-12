@@ -46,6 +46,14 @@ export class WhatsappContacto {
   @Column({ type: 'boolean', nullable: true })
   botForzado: boolean | null;
 
+  /**
+   * Id de la charla de este contacto en la central de chatbots (una por
+   * número). Sirve para entender las órdenes que llegan de allá.
+   */
+  @Index('ix_whatsapp_contacto_central')
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  centralConversationId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   createdAt: Date;
 

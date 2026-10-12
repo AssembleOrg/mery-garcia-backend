@@ -19,6 +19,9 @@ import { MensajesService } from './mensajes.service';
 import { BotService } from './bot.service';
 import { BandejaService } from './bandeja.service';
 import { InactividadService } from './inactividad.service';
+import { CentralClient } from './central/central.client';
+import { CentralModoService } from './central/central-modo.service';
+import { CentralEspejoService } from './central/central-espejo.service';
 import { SidecarController } from './controllers/sidecar.controller';
 import { BandejaController } from './controllers/bandeja.controller';
 import { ConfigWhatsappController } from './controllers/config-whatsapp.controller';
@@ -56,6 +59,9 @@ import { NotificacionesController } from './controllers/notificaciones.controlle
     BotService,
     BandejaService,
     InactividadService,
+    CentralClient,
+    CentralModoService,
+    CentralEspejoService,
   ],
   exports: [WhatsappEventosService, NotificacionesService],
 })

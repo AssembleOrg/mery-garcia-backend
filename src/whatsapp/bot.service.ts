@@ -6,6 +6,7 @@ import { WhatsappMensaje } from './entities/WhatsappMensaje.entity';
 import { ContactosService } from './contactos.service';
 import { ConfigWhatsappService } from './config-whatsapp.service';
 import { MensajesService } from './mensajes.service';
+import { CentralModoService } from './central/central-modo.service';
 import { NotificacionesService } from './notificaciones.service';
 import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
@@ -43,21 +44,8 @@ const DEBOUNCE_ESCRIBIENDO_MS = 5_000;
 const MAX_ADJUNTO_BYTES = 16 * 1024 * 1024;
 const CHAT_JID_VALIDO = /^[0-9]{5,20}@(s\.whatsapp\.net|lid)$/;
 
-/**
- * Comandos para prender/apagar el bot en un chat puntual. Se escriben en el
- * chat que se quiere probar, tal cual, sin nada más.
- */
-const COMANDO_BOT_ON = '/meryon';
-const COMANDO_BOT_OFF = '/meryoff';
 /** Marca la confirmación del comando, para que no cuente como una respuesta del bot. */
 const CLAVE_COMANDO_BOT = 'COMANDO_BOT';
-
-function comandoBot(texto: string | null): 'on' | 'off' | null {
-  const t = (texto ?? '').trim().toLowerCase();
-  if (t === COMANDO_BOT_ON) return 'on';
-  if (t === COMANDO_BOT_OFF) return 'off';
-  return null;
-}
 
 const MOTIVO_LEGIBLE: Record<MotivoEspera, string> = {
   [MotivoEspera.PIDIO_PERSONA]: 'Pidió hablar con una persona',
@@ -94,6 +82,7 @@ export class BotService {
     private readonly notificaciones: NotificacionesService,
     private readonly eventos: WhatsappEventosService,
     private readonly clasificador: ClasificadorService,
+    private readonly modoCentral: CentralModoService,
   ) {}
 
   async procesarEntrante(e: EntranteSidecar): Promise<void> {
@@ -125,7 +114,7 @@ export class BotService {
     // /meryon y /meryoff: no son una consulta, así que no suman no leídos ni
     // avisan a nadie. Van antes del chequeo de estado para que funcionen
     // también en una charla que está esperando o que atiende una persona.
-    const comando = tipo === TipoMensaje.TEXTO ? comandoBot(texto) : null;
+    const comando = tipo === TipoMensaje.TEXTO ? this.modoCentral.comando(texto) : null;
     if (comando) {
       await this.aplicarComandoBot(conv, comando);
       return;
@@ -142,8 +131,11 @@ export class BotService {
 
     if (nueva) this.logger.log(`Charla nueva ${conv.id}`);
 
-    // El interruptor del chat (/meryon, /meryoff) manda sobre la config general.
-    const botPrendido = contacto.botForzado ?? cfg.botActivo;
+    // El interruptor del chat (/meryon, /meryoff) manda sobre todo lo demás. Sin
+    // él: si la central tiene el modo prueba prendido el bot calla en este chat;
+    // si no, vale el interruptor general de la configuración de Mery.
+    const botPrendido =
+      contacto.botForzado ?? (this.modoCentral.pruebaActiva ? false : cfg.botActivo);
     if (!botPrendido) {
       await this.derivar(conv, MotivoEspera.BOT_APAGADO, [cfg.mensajes.botApagado]);
       return;
@@ -216,7 +208,7 @@ export class BotService {
       conv,
       prender
         ? '✅ Bot prendido en este chat.'
-        : '⏸️ Bot apagado en este chat. No respondo hasta que lo vuelvan a prender con /meryon.',
+        : `⏸️ Bot apagado en este chat. No respondo hasta que lo vuelvan a prender con ${this.modoCentral.comandoOn}.`,
       AutorMensaje.BOT,
       null,
       CLAVE_COMANDO_BOT,
@@ -369,7 +361,7 @@ export class BotService {
     return ultimos
       .slice(1)
       .reverse()
-      .filter((m) => m.texto && !comandoBot(m.texto) && m.respuestaClave !== CLAVE_COMANDO_BOT)
+      .filter((m) => m.texto && !this.modoCentral.comando(m.texto) && m.respuestaClave !== CLAVE_COMANDO_BOT)
       .map((m) => ({
         quien: m.autor === AutorMensaje.CLIENTA ? 'clienta' : 'bot',
         texto: recortar(m.texto as string).slice(0, 300),
