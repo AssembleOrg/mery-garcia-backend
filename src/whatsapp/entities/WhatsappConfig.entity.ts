@@ -81,6 +81,10 @@ export class WhatsappConfig {
   @Column({ type: 'varchar', length: 64, default: 'TATTOO_CONSULTA_TURNO' })
   menuOpcion2: string;
 
+  /** Última tanda de respuestas de ejemplo agregada a la tabla (ver respuestas-v2.seed). */
+  @Column({ type: 'integer', default: 1 })
+  semillaVersion: number;
+
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

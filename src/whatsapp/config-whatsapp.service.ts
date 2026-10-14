@@ -10,6 +10,7 @@ import {
 } from './entities/WhatsappConfig.entity';
 import { WhatsappRespuesta } from './entities/WhatsappRespuesta.entity';
 import { RESPUESTAS_SEMILLA } from './respuestas.seed';
+import { RESPUESTAS_V2, VERSION_SEMILLA_V2 } from './respuestas-v2.seed';
 import { horarioValido } from './horario';
 
 export interface RespuestaInput {
@@ -49,6 +50,7 @@ export class ConfigWhatsappService implements OnModuleInit {
     try {
       await this.obtener();
       await this.sembrarSiEstaVacio();
+      await this.sembrarNuevas();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -183,10 +185,34 @@ export class ConfigWhatsappService implements OnModuleInit {
   private async sembrarSiEstaVacio(): Promise<void> {
     if ((await this.respuestas.count()) > 0) return;
     await this.respuestas.save(
-      RESPUESTAS_SEMILLA.map((s, i) =>
+      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2].map((s, i) =>
         this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: i }),
       ),
     );
-    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length}`);
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V2 });
+    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length}`);
+  }
+
+  /**
+   * Agrega una sola vez las respuestas de una tanda nueva. No pisa nada: si ya
+   * hay una respuesta con esa clave (porque Mery la creó o la editó), queda la
+   * suya; y si después borra una de las nuevas, no vuelve a aparecer.
+   */
+  private async sembrarNuevas(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_SEMILLA_V2) return;
+    const existentes = await this.respuestas.find({ select: { clave: true, orden: true } });
+    const claves = new Set(existentes.map((r) => r.clave));
+    let orden = existentes.reduce((max, r) => Math.max(max, r.orden), -1) + 1;
+    const nuevas = RESPUESTAS_V2.filter((s) => !claves.has(s.clave));
+    if (nuevas.length) {
+      await this.respuestas.save(
+        nuevas.map((s) =>
+          this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: orden++ }),
+        ),
+      );
+    }
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V2 });
+    this.logger.log(`Respuestas nuevas agregadas: ${nuevas.length}`);
   }
 }

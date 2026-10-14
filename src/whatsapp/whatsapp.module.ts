@@ -16,6 +16,7 @@ import { NotificacionesService } from './notificaciones.service';
 import { ContactosService } from './contactos.service';
 import { ConfigWhatsappService } from './config-whatsapp.service';
 import { MensajesService } from './mensajes.service';
+import { CatalogoService } from './catalogo.service';
 import { BotService } from './bot.service';
 import { BandejaService } from './bandeja.service';
 import { InactividadService } from './inactividad.service';
@@ -57,6 +58,7 @@ import { NotificacionesController } from './controllers/notificaciones.controlle
     ConfigWhatsappService,
     MensajesService,
     BotService,
+    CatalogoService,
     BandejaService,
     InactividadService,
     CentralClient,

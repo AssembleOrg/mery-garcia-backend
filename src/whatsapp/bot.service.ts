@@ -14,6 +14,7 @@ import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './
 import { esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
 import { completar, primerNombre, sinSaludo } from './personalizar';
+import { CatalogoService } from './catalogo.service';
 import { aConversacionDto, etiquetaContacto } from './whatsapp.dto';
 import {
   AutorMensaje,
@@ -66,6 +67,9 @@ const MOTIVO_LEGIBLE: Record<MotivoEspera, string> = {
  * Mientras una charla está ESPERANDO o ATENDIDA el bot no dice nada: sólo
  * guarda y avisa.
  */
+/** Un saludo después de este tiempo sin que el bot escriba vuelve a recibir la presentación. */
+const PRESENTARSE_DE_NUEVO_TRAS_MS = 3 * 60 * 60_000;
+
 @Injectable()
 export class BotService {
   private readonly logger = new Logger(BotService.name);
@@ -84,6 +88,7 @@ export class BotService {
     private readonly eventos: WhatsappEventosService,
     private readonly clasificador: ClasificadorService,
     private readonly modoCentral: CentralModoService,
+    private readonly catalogo: CatalogoService,
   ) {}
 
   async procesarEntrante(e: EntranteSidecar): Promise<void> {
@@ -378,7 +383,9 @@ export class BotService {
   ): Promise<void> {
     await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, esperandoOpcionMenu: false });
     // Si la clienta sólo saludó en su primer mensaje, la presentación + bienvenida reemplaza al saludo.
-    const texto = await this.personalizar(conv, respuesta, { soloSaludo: clave === 'SALUDO' });
+    // Precios y listas en vivo ({formaciones}, {servicios:…}) y el horario de atención.
+    const conDatos = (await this.catalogo.completar(respuesta)).replace(/\{horario\}/g, describirHorario(horario));
+    const texto = await this.personalizar(conv, conDatos, { soloSaludo: clave === 'SALUDO' });
     await this.mensajes.enviarTexto(conv, texto, AutorMensaje.BOT, null, clave);
     if (derivaAPersona) {
       // La respuesta ya dice que sigue una persona; sólo si está cerrado se avisa el horario.
@@ -390,6 +397,22 @@ export class BotService {
    * ¿El bot ya le escribió algo en esta charla? Un envío fallido no cuenta, y
    * la confirmación de /meryon o /meryoff tampoco: no es parte de la charla.
    */
+  /**
+   * ¿El bot escribió en esta charla en las últimas horas? Query builder con el
+   * límite como parámetro: los operadores de find (MoreThan) pasan por el
+   * TimezoneTransformer de createdAt y no se pueden serializar.
+   */
+  private async botEscribioRecien(conversacionId: string): Promise<boolean> {
+    const desde = new Date(Date.now() - PRESENTARSE_DE_NUEVO_TRAS_MS);
+    const n = await this.mensajesRepo
+      .createQueryBuilder('m')
+      .where('m.conversacionId = :conversacionId', { conversacionId })
+      .andWhere('m.autor = :autor', { autor: AutorMensaje.BOT })
+      .andWhere('m.createdAt > :desde', { desde })
+      .getCount();
+    return n > 0;
+  }
+
   private botYaEscribio(conversacionId: string): Promise<boolean> {
     const base = { conversacionId, autor: AutorMensaje.BOT, estadoEnvio: Not(EstadoEnvio.FALLIDO) };
     // Dos condiciones porque en SQL `clave <> 'X'` descarta las filas con clave NULL.
@@ -440,10 +463,12 @@ export class BotService {
       ? ((await this.contactos.clientesDe([conv.contacto])).get(conv.contacto.clienteId) ?? null)
       : null;
     const nombre = primerNombre(cliente?.nombre, conv.contacto?.nombreWhatsapp);
-    // Se presenta si la clienta sólo saludó (aunque la charla venga de antes) o si
-    // el bot todavía no le llegó a escribir nada en esta charla (un envío fallido no cuenta).
+    // Se presenta si el bot todavía no le escribió nada en esta charla (un envío
+    // fallido no cuenta) o si vuelve a saludar después de un buen rato. Un "hola"
+    // en medio de una charla en curso no repite la presentación.
     const yaEscribio = await this.botYaEscribio(conv.id);
-    const primero = (opciones.presentar ?? true) && (opciones.soloSaludo || !yaEscribio);
+    const vuelve = Boolean(opciones.soloSaludo) && yaEscribio && !(await this.botEscribioRecien(conv.id));
+    const primero = (opciones.presentar ?? true) && (!yaEscribio || vuelve);
     if (!primero) {
       // Charla ya empezada: sin el "Hola, ¿cómo estás?" con que arrancan las
       // respuestas de la tabla. Un primer mensaje sin presentación (bot apagado)
