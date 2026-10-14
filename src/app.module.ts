@@ -12,6 +12,8 @@ import digitalOceanConfig from './config/digitalOcean.config';
 import ritmoConfig from './config/ritmo.config';
 import whatsappConfig from './config/whatsapp.config';
 import bookingConfig from './config/booking.config';
+import costearConfig from './config/costear.config';
+import { CostearModule } from './integraciones/costear/costear.module';
 import anthropicConfig from './config/anthropic.config';
 
 import { AppController } from './app.controller';
@@ -45,6 +47,7 @@ import { ValidacionComandasModule } from './validacion-comandas/validacion-coman
         ritmoConfig,
         whatsappConfig,
         bookingConfig,
+        costearConfig,
         anthropicConfig,
       ],
     }),
@@ -88,6 +91,7 @@ import { ValidacionComandasModule } from './validacion-comandas/validacion-coman
     RitmoModule,
     WhatsappModule,
     ReservasModule,
+    CostearModule,
     ContableModule,
     ValidacionComandasModule,
   ],
