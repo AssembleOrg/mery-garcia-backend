@@ -51,7 +51,7 @@ function normalizar(texto: string): string {
 
 /** "quiero hablar con alguien", "me pasás con una persona", "hay alguien?" */
 const PIDE_PERSONA = [
-  /\b(hablar|charlar|comunicar\w*|contactar\w*)\b.*\b(con\s+)?(una\s+|un\s+|alguna\s+|algun\s+)?(persona|humano|humana|alguien|asesor\w*|operador\w*|chica|mery|el equipo|equipo)\b/,
+  /\b(hablar|charlar|comunicar\w*|contactar\w*)\b.*\b(con\s+)?(una\s+|un\s+|alguna\s+|algun\s+)?(persona|humano|humana|alguien|asesor\w*|operador\w*|chica|mery|el equipo|equipo|recepcion)\b/,
   /\b(persona|humano|humana|alguien)\b.*\b(real|de verdad|del equipo|que me atienda|atienda)\b/,
   /\b(me\s+)?(pas[aá]s?|pasame|deriv[aá]\w*|comunic[aá]\w*)\b.*\b(persona|humano|alguien|asesor\w*|mery)\b/,
   /\b(hay|esta|estan)\s+(alguien|una persona)\b/,

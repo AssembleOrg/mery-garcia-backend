@@ -215,7 +215,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     respuesta:
       'Te inscribís directamente desde la web de formaciones: ' +
       WEB_FORMACIONES +
-      '\n\nSi tenés alguna duda con el pago, contanos por acá y te ayuda alguien del equipo 💕',
+      '\n\nSi tenés alguna duda con el pago, contanos por acá y te ayuda recepción 💕',
   },
   {
     clave: 'FORMACION_PRORROGA',
@@ -232,7 +232,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       'Cuando se vence el año de acceso podés pedir una prórroga:\n' +
       '• *6 meses*: el 30% del valor actual del curso.\n' +
       '• *12 meses*: el 40% del valor actual del curso.\n' +
-      'El pago es únicamente por transferencia. Te paso con alguien del equipo para gestionarla 💕',
+      'El pago es únicamente por transferencia. Te paso con recepción para gestionarla 💕',
     derivaAPersona: true,
   },
   {
@@ -247,7 +247,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       'no puedo ver las clases',
     ],
     respuesta:
-      'Desde acá no puedo ver cuentas ni contraseñas. Te paso con alguien del equipo para que te ayude con el acceso 💕',
+      'Desde acá no puedo ver cuentas ni contraseñas. Te paso con recepción para que te ayude con el acceso 💕',
     derivaAPersona: true,
   },
   {
@@ -261,7 +261,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     ],
     respuesta:
       'Para formar a tu equipo tenemos *Brow Essentials: Private Sessions*, espacios exclusivos para equipos de trabajo. ' +
-      'Te paso con alguien del equipo para coordinarlo 💕',
+      'Te paso con recepción para coordinarlo 💕',
     derivaAPersona: true,
   },
   {
@@ -277,7 +277,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     ],
     respuesta:
       'Hay *consultorías y mentorías online* para actualizarte o perfeccionarte: necesitás buena conexión a internet y unas 2 horas, y las podés hacer desde cualquier lugar del mundo. ' +
-      'Por ahora se coordinan por acá, enviando 3 disponibilidades posibles de día lunes. Te paso con alguien del equipo 💕',
+      'Por ahora se coordinan por acá, enviando 3 disponibilidades posibles de día lunes. Te paso con recepción 💕',
     derivaAPersona: true,
   },
   {
@@ -479,7 +479,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     ],
     respuesta:
       'Si lo que necesitás es cambiar la fecha, podés reprogramar vos misma desde la web con tu código de reserva, en "Gestionar mi reserva", hasta 48 h antes del turno. ' +
-      'Para cancelar te ayuda alguien del equipo: ya te paso 💕',
+      'Para cancelar te ayuda recepción: ya te paso 💕',
     derivaAPersona: true,
   },
 

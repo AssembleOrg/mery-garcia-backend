@@ -26,11 +26,13 @@ export interface MensajesBot {
   avisoInactividad: string;
   despedida: string;
   botApagado: string;
+  /** Derivación apagada (pruebas): lo que contesta cuando habría pasado la charla a recepción. */
+  sinDerivacion: string;
 }
 
 export const MENSAJES_POR_DEFECTO: MensajesBot = {
-  presentacion: '¡Hola {nombre}! 💕 Te escribimos del *Estudio Mery García*.',
-  presentacionClienta: '¡Hola {nombre}! 💕 Qué lindo tenerte de nuevo por acá. Te escribimos del *Estudio Mery García*.',
+  presentacion: '¡Hola {nombre}! 💕 Te escribimos de *Mery García*.',
+  presentacionClienta: '¡Hola {nombre}! 💕 Qué lindo tenerte de nuevo por acá. Te escribimos de *Mery García*.',
   bienvenida:
     '¿En qué te podemos ayudar? Podés consultarnos por servicios, precios, turnos o formaciones ✨',
   saludo: 'Hola! Como estas? 💕 ¿En qué te puedo ayudar?',
@@ -38,18 +40,19 @@ export const MENSAJES_POR_DEFECTO: MensajesBot = {
     'Perdón, no te entendí bien 🙈 ¿Sobre qué querés consultar?\n\n' +
     '1) Estilismo de cejas\n' +
     '2) Cosmetic tattoo (nanoblading, lip blush, lash line)\n' +
-    '3) Hablar con una persona del equipo',
-  derivacion: 'Te paso con una persona del equipo, en un ratito te responde 💕',
+    '3) Hablar con recepción',
+  derivacion: 'Te paso con recepción, en un ratito te responde 💕',
   fueraDeHorario:
     'En este momento estamos cerradas 🌙 Nuestro horario de atención es {horario}. ' +
     'Dejanos tu consulta y apenas abrimos te respondemos 💕',
   audioRecibido:
-    'Recibí tu audio 🎧 En un ratito lo escucha alguien del equipo y te responde.',
+    'Recibí tu audio 🎧 En un ratito lo escucha recepción y te responde.',
   archivoRecibido:
-    'Recibí lo que me mandaste 📎 En un ratito lo ve alguien del equipo y te responde.',
+    'Recibí lo que me mandaste 📎 En un ratito lo ve recepción y te responde.',
   avisoInactividad: '¿Seguís ahí? Si necesitás algo más, escribinos 💕',
   despedida: 'Gracias por escribirnos 💕 Cualquier cosa, acá estamos.',
-  botApagado: 'Hola! Gracias por escribirnos 💕 En un ratito te responde alguien del equipo.',
+  sinDerivacion: 'Por ahora te respondo yo 💕 ¿Te ayudo con alguna otra consulta?',
+  botApagado: 'Hola! Gracias por escribirnos 💕 En un ratito te responde recepción.',
 };
 
 export const HORARIO_POR_DEFECTO: HorarioAtencion = {
@@ -67,6 +70,13 @@ export class WhatsappConfig {
   /** Apagado: todo entrante pasa directo a una persona. */
   @Column({ type: 'boolean', default: true })
   botActivo: boolean;
+
+  /**
+   * Pasar charlas a recepción. Apagado (modo pruebas) el bot nunca deriva: en vez
+   * de "te paso con recepción" contesta `mensajes.sinDerivacion` y sigue él.
+   */
+  @Column({ type: 'boolean', default: false })
+  derivacionActiva: boolean;
 
   @Column({ type: 'jsonb', default: () => `'${JSON.stringify(HORARIO_POR_DEFECTO)}'` })
   horario: HorarioAtencion;

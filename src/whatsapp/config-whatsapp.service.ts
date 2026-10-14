@@ -26,6 +26,7 @@ export interface RespuestaInput {
 
 export interface ConfigInput {
   botActivo?: boolean;
+  derivacionActiva?: boolean;
   horario?: HorarioAtencion;
   mensajes?: Partial<MensajesBot>;
   menuOpcion1?: string;
@@ -34,6 +35,20 @@ export interface ConfigInput {
 
 const CLAVE_VALIDA = /^[A-Z][A-Z0-9_]{1,63}$/;
 const RESERVADAS = new Set(['NO_SE', 'PERSONA']);
+
+const VERSION_TEXTOS_RECEPCION = 3;
+/** Frases exactas a reemplazar en los textos guardados (en orden). */
+const CAMBIOS_DE_TEXTO: [string, string][] = [
+  ['del *Estudio Mery García*', 'de *Mery García*'],
+  ['Estudio Mery García', 'Mery García'],
+  ['Hablar con una persona del equipo', 'Hablar con recepción'],
+  ['Te paso con una persona del equipo', 'Te paso con recepción'],
+  ['lo escucha alguien del equipo', 'lo escucha recepción'],
+  ['lo ve alguien del equipo', 'lo ve recepción'],
+  ['te responde alguien del equipo', 'te responde recepción'],
+  ['te ayuda alguien del equipo', 'te ayuda recepción'],
+  ['Te paso con alguien del equipo', 'Te paso con recepción'],
+];
 
 @Injectable()
 export class ConfigWhatsappService implements OnModuleInit {
@@ -51,6 +66,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.obtener();
       await this.sembrarSiEstaVacio();
       await this.sembrarNuevas();
+      await this.renombrarTextos();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -76,6 +92,7 @@ export class ConfigWhatsappService implements OnModuleInit {
   async actualizar(input: ConfigInput): Promise<WhatsappConfig> {
     const fila = await this.obtener();
     if (input.botActivo !== undefined) fila.botActivo = Boolean(input.botActivo);
+    if (input.derivacionActiva !== undefined) fila.derivacionActiva = Boolean(input.derivacionActiva);
     if (input.horario !== undefined) {
       if (!horarioValido(input.horario)) {
         throw new BadRequestException('Horario inválido: días 1..7 y horas HH:mm, desde < hasta.');
@@ -191,6 +208,30 @@ export class ConfigWhatsappService implements OnModuleInit {
     );
     await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V2 });
     this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length}`);
+  }
+
+  /**
+   * Una sola vez (versión 3): los textos guardados dejan de decir "Estudio" y
+   * "persona / alguien del equipo" (ahora es "recepción"). Sólo reemplaza esas
+   * frases exactas; el resto de lo que editó Mery queda igual.
+   */
+  private async renombrarTextos(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_TEXTOS_RECEPCION) return;
+    const cambiar = (t: string) => CAMBIOS_DE_TEXTO.reduce((acc, [de, a]) => acc.split(de).join(a), t);
+    const mensajes = Object.fromEntries(
+      Object.entries(cfg.mensajes).map(([k, v]) => [k, typeof v === 'string' ? cambiar(v) : v]),
+    ) as unknown as WhatsappConfig['mensajes'];
+    await this.configRepo.update({ id: 'default' }, { mensajes, semillaVersion: VERSION_TEXTOS_RECEPCION });
+    let n = 0;
+    for (const r of await this.respuestas.find()) {
+      const nueva = cambiar(r.respuesta);
+      if (nueva !== r.respuesta) {
+        await this.respuestas.update({ id: r.id }, { respuesta: nueva });
+        n++;
+      }
+    }
+    this.logger.log(`Textos pasados a "recepción" y sin "Estudio": config + ${n} respuestas`);
   }
 
   /**

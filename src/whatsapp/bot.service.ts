@@ -489,9 +489,20 @@ ${cuerpo}`, nombre);
     textos: string[],
     extra?: { fueraDeHorario: string; horario: { dias: number[]; desde: string; hasta: string } },
   ): Promise<void> {
-    const cfg = extra ? null : await this.config.obtener();
-    const horario = extra?.horario ?? (cfg as NonNullable<typeof cfg>).horario;
-    const textoFuera = extra?.fueraDeHorario ?? (cfg as NonNullable<typeof cfg>).mensajes.fueraDeHorario;
+    const cfg = await this.config.obtener();
+    const horario = extra?.horario ?? cfg.horario;
+    const textoFuera = extra?.fueraDeHorario ?? cfg.mensajes.fueraDeHorario;
+
+    // Modo pruebas: no se pasa nada a recepción. El bot sigue con la charla y,
+    // si iba a avisar el pase, contesta otra cosa. Con el bot apagado sí deriva.
+    if (!cfg.derivacionActiva && motivo !== MotivoEspera.BOT_APAGADO) {
+      this.logger.log(`Derivación apagada: ${conv.id} (${motivo}) sigue con el bot`);
+      await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, esperandoOpcionMenu: false });
+      if (textos.length) {
+        await this.mensajes.enviarTexto(conv, await this.personalizar(conv, cfg.mensajes.sinDerivacion), AutorMensaje.BOT);
+      }
+      return;
+    }
 
     await this.conversaciones.update(
       { id: conv.id },

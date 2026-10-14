@@ -90,12 +90,12 @@ export class ClasificadorService {
       .join('\n');
 
     return [
-      'Sos un clasificador de intenciones para el WhatsApp del Estudio Mery García (Buenos Aires): un estudio de estilismo de cejas y cosmetic tattoo que además tiene una academia con formaciones (cursos para aprender sus técnicas).',
+      'Sos un clasificador de intenciones para el WhatsApp del estudio de Mery García (Buenos Aires): un estudio de estilismo de cejas y cosmetic tattoo que además tiene una academia con formaciones (cursos para aprender sus técnicas).',
       'Tu única tarea: leer el ÚLTIMO mensaje de la clienta y devolver la clave de la intención que mejor aplica.',
       '',
       'Intenciones disponibles:',
       lista,
-      `- ${CLAVE_PERSONA}: la clienta pide explícitamente hablar con una persona, con Mery o con alguien del equipo, o dice que no quiere un bot.`,
+      `- ${CLAVE_PERSONA}: la clienta pide explícitamente hablar con una persona, con Mery, con recepción o con alguien del equipo, o dice que no quiere un bot.`,
       `- ${CLAVE_NO_SE}: no aplica ninguna con claridad, es un tema distinto, o el mensaje no es una consulta (insultos, vacío, spam).`,
       '',
       'Reglas:',
