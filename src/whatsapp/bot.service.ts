@@ -130,6 +130,23 @@ export class BotService {
     conv.noLeidos += 1;
     await this.publicarConversacion(conv);
 
+    // Modo pruebas: una charla que había quedado esperando a recepción (de antes
+    // de apagar la derivación) vuelve al bot. Las que atiende alguien, no.
+    if (
+      conv.estado === EstadoConversacion.ESPERANDO &&
+      !cfg.derivacionActiva &&
+      conv.motivoEspera !== MotivoEspera.BOT_APAGADO
+    ) {
+      await this.conversaciones.update(
+        { id: conv.id },
+        { estado: EstadoConversacion.BOT, motivoEspera: null, esperandoDesde: null, noEntendidosSeguidos: 0, esperandoOpcionMenu: false },
+      );
+      conv.estado = EstadoConversacion.BOT;
+      conv.noEntendidosSeguidos = 0;
+      conv.esperandoOpcionMenu = false;
+      await this.publicarConversacion(conv);
+    }
+
     if (conv.estado !== EstadoConversacion.BOT) {
       await this.avisarMensaje(conv, tipo, texto);
       return;

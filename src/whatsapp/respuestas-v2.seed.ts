@@ -23,6 +23,8 @@ const WEB_ESTILISMO = 'https://merygarciabooking.com/estilismo-de-cejas/';
 const WEB_TATTOO = 'https://merygarciabooking.com/tattoo-cosmetico/';
 
 export const VERSION_SEMILLA_V2 = 2;
+/** Tanda 4: respuestas agregadas después (se suman sin pisar, igual que la v2). */
+export const VERSION_SEMILLA_V4 = 4;
 
 export const RESPUESTAS_V2: RespuestaSemilla[] = [
   // ─── Formaciones (aprender) ─────────────────────────────────
@@ -541,5 +543,30 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     respuesta:
       'Mery García es artista del tatuaje cosmético con más de 20 años de experiencia. Se formó como maquilladora profesional de moda, se especializó en estilismo de cejas y tiene una estética hiperrealista. ' +
       'Hoy se dedica 100% al tatuaje cosmético y lidera un equipo de artistas y estilistas formadas en su metodología. Su lema: "los detalles son todo" ✨',
+  },
+];
+
+/** Agregadas en la tanda 4 (turnos). */
+export const RESPUESTAS_V4: RespuestaSemilla[] = [
+  {
+    clave: 'TURNO_RESERVAR',
+    titulo: 'Quiere sacar un turno / disponibilidad',
+    descripcion:
+      'Quiere sacar o reservar un turno, pregunta cómo reservar, si hay disponibilidad o turno para un día, o pide turno con Mery. Si ya dijo el servicio (ej. modelado, consulta de tattoo) va la clave de ese turno.',
+    ejemplos: [
+      'quiero un turno',
+      'quiero un turno con Mery',
+      'cómo saco turno?',
+      'tienen turno para el sábado?',
+      'hay disponibilidad esta semana?',
+      'quiero reservar',
+    ],
+    respuesta:
+      'Los turnos se reservan desde nuestra web, donde ves todas las disponibilidades en tiempo real y abonás la seña online 💕\n\n' +
+      '• Estilismo de cejas y pestañas: ' +
+      WEB_ESTILISMO +
+      '\n• Cosmetic tattoo: ' +
+      WEB_TATTOO +
+      '\n\nLos servicios que hace Mery figuran como *By Mery García*. Si es tu primera vez con cosmetic tattoo, primero va la consulta previa obligatoria.',
   },
 ];

@@ -30,6 +30,14 @@ export interface MensajesBot {
   sinDerivacion: string;
 }
 
+/** Antes era "Por ahora te respondo yo 💕 ¿Te ayudo con alguna otra consulta?" (no guiaba). */
+export const SIN_DERIVACION_POR_DEFECTO =
+  'Te ayudo yo 💕 Puedo contarte sobre servicios, precios, turnos y formaciones.\n\n' +
+  'Los turnos se reservan desde nuestra web, donde ves todas las disponibilidades: https://merygarciabooking.com\n' +
+  'Formaciones: https://merygarcia.com.ar/formaciones\n\n' +
+  '¿Qué te gustaría saber?';
+export const SIN_DERIVACION_VIEJO = 'Por ahora te respondo yo 💕 ¿Te ayudo con alguna otra consulta?';
+
 export const MENSAJES_POR_DEFECTO: MensajesBot = {
   presentacion: '¡Hola {nombre}! 💕 Te escribimos de *Mery García*.',
   presentacionClienta: '¡Hola {nombre}! 💕 Qué lindo tenerte de nuevo por acá. Te escribimos de *Mery García*.',
@@ -51,7 +59,7 @@ export const MENSAJES_POR_DEFECTO: MensajesBot = {
     'Recibí lo que me mandaste 📎 En un ratito lo ve recepción y te responde.',
   avisoInactividad: '¿Seguís ahí? Si necesitás algo más, escribinos 💕',
   despedida: 'Gracias por escribirnos 💕 Cualquier cosa, acá estamos.',
-  sinDerivacion: 'Por ahora te respondo yo 💕 ¿Te ayudo con alguna otra consulta?',
+  sinDerivacion: SIN_DERIVACION_POR_DEFECTO,
   botApagado: 'Hola! Gracias por escribirnos 💕 En un ratito te responde recepción.',
 };
 

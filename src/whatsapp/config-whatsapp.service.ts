@@ -6,11 +6,13 @@ import {
   HorarioAtencion,
   MENSAJES_POR_DEFECTO,
   MensajesBot,
+  SIN_DERIVACION_POR_DEFECTO,
+  SIN_DERIVACION_VIEJO,
   WhatsappConfig,
 } from './entities/WhatsappConfig.entity';
 import { WhatsappRespuesta } from './entities/WhatsappRespuesta.entity';
 import { RESPUESTAS_SEMILLA } from './respuestas.seed';
-import { RESPUESTAS_V2, VERSION_SEMILLA_V2 } from './respuestas-v2.seed';
+import { RESPUESTAS_V2, RESPUESTAS_V4, VERSION_SEMILLA_V2, VERSION_SEMILLA_V4 } from './respuestas-v2.seed';
 import { horarioValido } from './horario';
 
 export interface RespuestaInput {
@@ -67,6 +69,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.sembrarSiEstaVacio();
       await this.sembrarNuevas();
       await this.renombrarTextos();
+      await this.tandaTurnos();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -202,12 +205,36 @@ export class ConfigWhatsappService implements OnModuleInit {
   private async sembrarSiEstaVacio(): Promise<void> {
     if ((await this.respuestas.count()) > 0) return;
     await this.respuestas.save(
-      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2].map((s, i) =>
+      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2, ...RESPUESTAS_V4].map((s, i) =>
         this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: i }),
       ),
     );
-    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V2 });
-    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length}`);
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V4 });
+    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length + RESPUESTAS_V4.length}`);
+  }
+
+  /**
+   * Una sola vez (versión 4): la respuesta de turnos y el texto sin derivación
+   * que guía (si todavía era el de antes; si Mery lo cambió, queda el suyo).
+   */
+  private async tandaTurnos(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_SEMILLA_V4) return;
+    const claves = new Set((await this.respuestas.find({ select: { clave: true } })).map((r) => r.clave));
+    const maxOrden = await this.respuestas.maximum('orden');
+    const nuevas = RESPUESTAS_V4.filter((s) => !claves.has(s.clave));
+    let orden = (maxOrden ?? -1) + 1;
+    if (nuevas.length) {
+      await this.respuestas.save(
+        nuevas.map((s) =>
+          this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: orden++ }),
+        ),
+      );
+    }
+    const mensajes = { ...cfg.mensajes };
+    if (mensajes.sinDerivacion === SIN_DERIVACION_VIEJO) mensajes.sinDerivacion = SIN_DERIVACION_POR_DEFECTO;
+    await this.configRepo.update({ id: 'default' }, { mensajes, semillaVersion: VERSION_SEMILLA_V4 });
+    this.logger.log(`Tanda de turnos: ${nuevas.length} respuestas nuevas`);
   }
 
   /**
