@@ -10,6 +10,7 @@ import {
   ManyToMany
 } from "typeorm";
 import { TimezoneTransformer } from "../../common/transformers/timezone.transformer";
+import { NumericTransformer } from "../../common/transformers/numeric.transformer";
 import { ItemComanda } from "src/comanda/entities/ItemComanda.entity";
 
 @Entity({ name: 'trabajadores' })
@@ -39,6 +40,25 @@ export class Trabajador {
     },
   })
   comisionPorcentaje: number;
+
+  /**
+   * Tope del rango de comisión (ej. 35 para "entre 30 y 35%"). El mínimo es
+   * comisionPorcentaje; el valor del mes se confirma al cierre
+   * (ComisionPorcentajeMes). Null = sin rango.
+   */
+  @Column({ type: 'numeric', precision: 5, scale: 2, nullable: true, transformer: NumericTransformer })
+  comisionPorcentajeMax: number | null;
+
+  /** Porcentaje sobre productos (precio en efectivo) en el esquema por base fija. */
+  @Column({ type: 'numeric', precision: 5, scale: 2, nullable: true, transformer: NumericTransformer })
+  comisionProductosPorcentaje: number | null;
+
+  /**
+   * Desde qué día (YYYY-MM-DD) rige el esquema por base fija (ComisionBase).
+   * Null, o comandas anteriores: cálculo histórico (30% servicios, 10% productos).
+   */
+  @Column({ type: 'date', nullable: true })
+  comisionBaseDesde: string | null;
 
   @Column({ length: 20, nullable: true })
   telefono?: string;

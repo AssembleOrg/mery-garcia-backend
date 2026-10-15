@@ -31,6 +31,8 @@ import { MetodoPago } from 'src/cliente/entities/MetodoPago.entity';
 import { CrearComandaDto } from './dto/crear-comanda.dto';
 import { FiltrarComandasDto } from './dto/filtrar-comandas.dto';
 import { FiltrarComisionesDto } from './dto/comisiones.dto';
+import { ComisionesConfigService } from './services/comisiones-config.service';
+import { factorEfectivo, porcentajeDelMes, ProductoCatalogo, redondear } from './comisiones/reglas';
 import { AuditoriaService } from 'src/auditoria/auditoria.service';
 import { TipoAccion } from 'src/enums/TipoAccion.enum';
 import { ModuloSistema } from 'src/enums/ModuloSistema.enum';
@@ -89,6 +91,7 @@ export class ComandaService {
     private movimientoRepository: Repository<Movimiento>,
     @InjectRepository(AjusteEfectivoCaja2)
     private ajusteEfectivoCaja2Repository: Repository<AjusteEfectivoCaja2>,
+    private comisionesConfig: ComisionesConfigService,
   ) { }
 
   async crear(crearComandaDto: CrearComandaDto): Promise<Comanda> {
@@ -3198,6 +3201,34 @@ export class ComandaService {
       ],
     });
 
+    // Esquema por base fija (ver comisiones/reglas.ts): por trabajadora, desde
+    // una fecha. Lo anterior a esa fecha sigue con el cálculo histórico.
+    const esquemas = await this.comisionesConfig.esquemas();
+    const catalogoProductos: ProductoCatalogo[] = esquemas.size
+      ? (
+          await this.dataSource.getRepository(ProductoServicio).find({
+            where: { tipo: TipoProductoServicio.PRODUCTO },
+            relations: ['unidadNegocio'],
+          })
+        ).map((ps) => ({
+          id: ps.id,
+          nombre: ps.nombre,
+          tipo: ps.tipo,
+          precio: Number(ps.precio ?? 0),
+          precioFijoARS: ps.precioFijoARS != null ? Number(ps.precioFijoARS) : null,
+          esPrecioCongelado: ps.esPrecioCongelado,
+          unidadNegocioId: ps.unidadNegocio?.id ?? null,
+        }))
+      : [];
+    const factorPorProducto = new Map<string, number>();
+    const factorDe = (ps: ProductoServicio): number => {
+      if (!factorPorProducto.has(ps.id)) {
+        const enCatalogo = catalogoProductos.find((p) => p.id === ps.id);
+        factorPorProducto.set(ps.id, enCatalogo ? factorEfectivo(enCatalogo, catalogoProductos) : 1);
+      }
+      return factorPorProducto.get(ps.id)!;
+    };
+
     // Estructura para almacenar totales por trabajador
     const totalesPorTrabajador = new Map<string, {
       trabajadorId: string;
@@ -3212,6 +3243,16 @@ export class ComandaService {
       productosServicios: Map<string, { cantidad: number; tipo: string }>; // nombre producto/servicio -> {cantidad, tipo}
       categorias: Map<string, { id: string; nombre: string; orden: number; cantidad: number }>; // id categoría -> conteo de servicios
       serviciosSinCategoria: number;
+      // Bases del cálculo histórico (30% servicios / 10% productos): lo que no
+      // entra en el esquema por base fija.
+      historico: { serviciosARS: number; serviciosUSD: number; productosARS: number; productosUSD: number };
+      // Esquema por base fija.
+      base: {
+        servicios: Map<string, { categoriaId: string; categoria: string; mes: string; cantidad: number; montoBase: number; porcentaje: number; porcentajeMax: number; confirmado: boolean }>;
+        productosARS: number; // vendido, llevado a precio en efectivo
+        productosUSD: number;
+        sinComision: Map<string, number>; // servicio sin base -> cantidad
+      };
     }>();
 
     // Totales generales por moneda
@@ -3276,6 +3317,10 @@ export class ComandaService {
           ? Number(filtros.dolar)
           : Number(comanda.valorDolar ?? 0);
 
+      const diaComanda = DateTime.fromJSDate(new Date(comanda.createdAt)).setZone(tz);
+      const dia = diaComanda.toISODate() ?? '';
+      const mes = dia.slice(0, 7);
+
       comanda.items?.forEach((item) => {
         if (!item.trabajador || !item.productoServicio) {
           return; // Skip items sin trabajador o producto/servicio
@@ -3312,6 +3357,8 @@ export class ComandaService {
             productosServicios: new Map(),
             categorias: new Map(),
             serviciosSinCategoria: 0,
+            historico: { serviciosARS: 0, serviciosUSD: 0, productosARS: 0, productosUSD: 0 },
+            base: { servicios: new Map(), productosARS: 0, productosUSD: 0, sinComision: new Map() },
           });
         }
 
@@ -3353,6 +3400,36 @@ export class ComandaService {
           }
         }
 
+        const esquema = esquemas.get(trabajadorId);
+        const enEsquemaBase = !!esquema && dia >= esquema.desde;
+        const categoriaItem = item.productoServicio.categoria;
+        const montoBase = enEsquemaBase && categoriaItem ? esquema!.bases.get(categoriaItem.id) : undefined;
+
+        // Esquema por base fija: el servicio comisiona sobre el monto base de
+        // su categoría, no sobre lo cobrado (también para ítems tipo producto
+        // que tengan categoría, como la demo de Lashes Line).
+        if (enEsquemaBase && montoBase != null) {
+          const pct = porcentajeDelMes(esquema!, mes);
+          const clave = `${categoriaItem!.id}|${mes}`;
+          const s = trabajadorData.base.servicios.get(clave) ?? {
+            categoriaId: categoriaItem!.id,
+            categoria: categoriaItem!.nombre,
+            mes,
+            cantidad: 0,
+            montoBase,
+            porcentaje: pct.aplicado,
+            porcentajeMax: pct.maximo,
+            confirmado: pct.confirmado,
+          };
+          s.cantidad += cantidad;
+          trabajadorData.base.servicios.set(clave, s);
+        } else if (enEsquemaBase && tipo === TipoProductoServicio.SERVICIO) {
+          trabajadorData.base.sinComision.set(
+            nombreProductoServicio,
+            (trabajadorData.base.sinComision.get(nombreProductoServicio) ?? 0) + cantidad,
+          );
+        }
+
         // Si es Rosario con consultas, solo contar las consultas
         if (esRosarioConConsulta) {
           trabajadorData.cantidadConsultas += cantidad;
@@ -3370,15 +3447,23 @@ export class ComandaService {
           if (esServicioUSD(item)) {
             trabajadorData.serviciosUSD += subtotal;
             totalServiciosUSD += subtotal;
+            if (!enEsquemaBase) trabajadorData.historico.serviciosUSD += subtotal;
           } else {
             trabajadorData.serviciosARS += subtotal;
             totalServiciosARS += subtotal;
+            if (!enEsquemaBase) trabajadorData.historico.serviciosARS += subtotal;
           }
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
+          // En el esquema por base fija el producto comisiona sobre el precio en
+          // efectivo: si se vendió la variante "precio lista", se ajusta con su
+          // gemela "efectivo". Los que tienen base ya se contaron arriba.
+          const factor = enEsquemaBase && montoBase == null ? factorDe(item.productoServicio) : 0;
           if (esProductoListaARS(item, precio)) {
             // Precio congelado / fijo en pesos: ya está en ARS.
             trabajadorData.productosARS += subtotal;
             totalProductosARS += subtotal;
+            if (!enEsquemaBase) trabajadorData.historico.productosARS += subtotal;
+            else trabajadorData.base.productosARS += subtotal * factor;
           } else {
             // Lista en USD: va en dólares solo la parte que se cobró en
             // dólares; el resto se cobró en pesos al valorDolar.
@@ -3389,6 +3474,13 @@ export class ComandaService {
             totalProductosUSD += enUSD;
             trabajadorData.productosARS += enARS;
             totalProductosARS += enARS;
+            if (!enEsquemaBase) {
+              trabajadorData.historico.productosUSD += enUSD;
+              trabajadorData.historico.productosARS += enARS;
+            } else {
+              trabajadorData.base.productosUSD += enUSD * factor;
+              trabajadorData.base.productosARS += enARS * factor;
+            }
           }
         }
       });
@@ -3396,11 +3488,29 @@ export class ComandaService {
 
     // Calcular comisiones para cada trabajador (separadas por moneda)
     const trabajadores = Array.from(totalesPorTrabajador.values()).map((trabajadorData) => {
-      // Comisiones: 30% de servicios, 10% de productos, en cada moneda
-      const comServiciosARS = trabajadorData.serviciosARS * 0.30;
-      const comServiciosUSD = trabajadorData.serviciosUSD * 0.30;
-      const comProductosARS = trabajadorData.productosARS * 0.10;
-      const comProductosUSD = trabajadorData.productosUSD * 0.10;
+      // Histórico: 30% de servicios, 10% de productos, en cada moneda.
+      // Esquema por base fija: cantidad × monto base × % del mes en servicios
+      // y % de productos sobre el precio en efectivo.
+      const h = trabajadorData.historico;
+      const esquema = esquemas.get(trabajadorData.trabajadorId);
+      const pctProductos = (esquema?.productosPorcentaje ?? 0) / 100;
+      const serviciosBase = [...trabajadorData.base.servicios.values()]
+        .sort((a, b) => a.mes.localeCompare(b.mes) || a.categoria.localeCompare(b.categoria, 'es'))
+        .map((s) => ({
+          ...s,
+          baseTotal: s.cantidad * s.montoBase,
+          comision: redondear((s.cantidad * s.montoBase * s.porcentaje) / 100),
+          comisionMax: redondear((s.cantidad * s.montoBase * s.porcentajeMax) / 100),
+        }));
+      const comBaseServicios = serviciosBase.reduce((a, s) => a + s.comision, 0);
+      const comBaseServiciosMax = serviciosBase.reduce((a, s) => a + s.comisionMax, 0);
+      const comBaseProductosARS = trabajadorData.base.productosARS * pctProductos;
+      const comBaseProductosUSD = trabajadorData.base.productosUSD * pctProductos;
+
+      const comServiciosARS = h.serviciosARS * 0.30 + comBaseServicios;
+      const comServiciosUSD = h.serviciosUSD * 0.30;
+      const comProductosARS = h.productosARS * 0.10 + comBaseProductosARS;
+      const comProductosUSD = h.productosUSD * 0.10 + comBaseProductosUSD;
 
       // Convertir Map de unidades de negocio a objeto
       const unidadesNegocio: Record<string, number> = {};
@@ -3441,6 +3551,26 @@ export class ComandaService {
           totalARS: Number((comServiciosARS + comProductosARS).toFixed(2)),
           totalUSD: Number((comServiciosUSD + comProductosUSD).toFixed(2)),
         },
+        // Detalle del esquema por base fija (null si la trabajadora no lo usa).
+        // Mientras el porcentaje de un mes no está confirmado, "comisiones" usa
+        // el mínimo del rango y "totalARSAlMaximo" el tope.
+        esquemaBase: esquema
+          ? {
+              desde: esquema.desde,
+              porcentajeMin: esquema.porcentajeMin,
+              porcentajeMax: esquema.porcentajeMax,
+              productosPorcentaje: esquema.productosPorcentaje,
+              servicios: serviciosBase,
+              productosEfectivoARS: redondear(trabajadorData.base.productosARS),
+              productosEfectivoUSD: redondear(trabajadorData.base.productosUSD),
+              comisionServiciosARS: redondear(comBaseServicios),
+              comisionProductosARS: redondear(comBaseProductosARS),
+              comisionProductosUSD: redondear(comBaseProductosUSD),
+              porcentajePendiente: serviciosBase.some((s) => !s.confirmado),
+              totalARSAlMaximo: redondear(comServiciosARS + comProductosARS + (comBaseServiciosMax - comBaseServicios)),
+              serviciosSinComision: [...trabajadorData.base.sinComision.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })),
+            }
+          : null,
       };
     });
 

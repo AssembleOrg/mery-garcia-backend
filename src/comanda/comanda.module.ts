@@ -1,3 +1,7 @@
+import { ComisionBase } from './entities/comisionBase.entity';
+import { ComisionPorcentajeMes } from './entities/comisionPorcentajeMes.entity';
+import { ComisionesConfigService } from './services/comisiones-config.service';
+import { ComisionesConfigController } from './controllers/comisiones-config.controller';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ComandaController } from './comanda.controller';
@@ -57,6 +61,8 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
       ConfiguracionSistema,
       Trabajador,
       PrepagoGuardado,
+      ComisionBase,
+      ComisionPorcentajeMes,
     ]),
     AuditoriaModule,
     ConfigModule,
@@ -67,6 +73,7 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
     ProductoServicioController,
     UnidadNegocioController,
     CategoriaServicioController,
+    ComisionesConfigController,
     ItemComandaController,
     MovimientoController,
   ],
@@ -76,6 +83,7 @@ import { AjusteEfectivoCaja2 } from './entities/ajuste-efectivo-caja2.entity';
     ProductoServicioService,
     UnidadNegocioService,
     CategoriaServicioService,
+    ComisionesConfigService,
     ItemComandaService,
     MovimientoService,
     ReporteServiciosService,
