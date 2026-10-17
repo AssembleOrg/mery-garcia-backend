@@ -33,6 +33,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ReservasModule } from './reservas/reservas.module';
 import { ContableModule } from './contable/contable.module';
 import { ValidacionComandasModule } from './validacion-comandas/validacion-comandas.module';
+import { StockModule } from './stock/stock.module';
 
 @Module({
   imports: [
@@ -94,6 +95,7 @@ import { ValidacionComandasModule } from './validacion-comandas/validacion-coman
     CostearModule,
     ContableModule,
     ValidacionComandasModule,
+    StockModule,
   ],
   controllers: [AppController],
   providers: [
