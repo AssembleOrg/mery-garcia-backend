@@ -86,6 +86,13 @@ export class WhatsappConfig {
   @Column({ type: 'boolean', default: false })
   derivacionActiva: boolean;
 
+  /**
+   * El bot sólo contesta en los chats donde alguien escribió "Mery on". En el
+   * resto no dice nada (el mensaje igual queda en la bandeja).
+   */
+  @Column({ type: 'boolean', default: true })
+  soloChatsConComando: boolean;
+
   @Column({ type: 'jsonb', default: () => `'${JSON.stringify(HORARIO_POR_DEFECTO)}'` })
   horario: HorarioAtencion;
 

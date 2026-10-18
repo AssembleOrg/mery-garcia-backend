@@ -33,6 +33,8 @@ export interface EntranteSidecar {
   pushName: string | null;
   waMessageId: string | null;
   kind: 'texto' | 'audio' | 'imagen' | 'documento' | 'otro' | 'escribiendo' | 'pausa';
+  /** Lo escribió la dueña del número desde su celular (sólo llegan los comandos). */
+  deMi?: boolean;
   text: string;
   media: { base64: string; mime: string; fileName: string | null; seconds: number | null } | null;
   timestamp: number | null;
@@ -125,6 +127,10 @@ export class BotService {
   }
 
   private async procesar(e: EntranteSidecar): Promise<void> {
+    if (e?.deMi) {
+      await this.comandoDeLaDuena(e);
+      return;
+    }
     if (!e?.chatJid || !CHAT_JID_VALIDO.test(e.chatJid)) {
       this.logger.warn('Entrante con chatJid inválido, ignorado');
       return;
@@ -188,6 +194,12 @@ export class BotService {
     if (nueva) this.logger.log(`Charla nueva ${conv.id}`);
 
     if (!(await this.botPrendidoPara(contacto))) {
+      // Chat sin "Mery on" (o apagado con "Mery off"): silencio total. El mensaje
+      // queda guardado en la bandeja, pero el bot no contesta ni deriva. Sólo
+      // con el bot apagado del todo se avisa "en un ratito te responden".
+      const silencio =
+        contacto.botForzado === false || cfg.soloChatsConComando || this.modoCentral.pruebaActiva;
+      if (silencio) return;
       await this.derivar(conv, MotivoEspera.BOT_APAGADO, [cfg.mensajes.botApagado]);
       return;
     }
@@ -231,7 +243,10 @@ export class BotService {
   async botPrendidoPara(contacto: WhatsappContacto): Promise<boolean> {
     if (contacto.botForzado !== null && contacto.botForzado !== undefined) return contacto.botForzado;
     if (this.modoCentral.pruebaActiva) return false;
-    return (await this.config.obtener()).botActivo;
+    const cfg = await this.config.obtener();
+    // Sólo en los chats donde alguien escribió "Mery on".
+    if (cfg.soloChatsConComando) return false;
+    return cfg.botActivo;
   }
 
   /**
@@ -283,7 +298,27 @@ export class BotService {
    * corta cualquier respuesta en camino y el próximo mensaje pasa a una
    * persona, igual que con el bot apagado para todos.
    */
-  private async aplicarComandoBot(conv: WhatsappConversacion, comando: 'on' | 'off'): Promise<void> {
+  /**
+   * "Mery on" / "Mery off" escrito por la dueña del número en el chat de alguien.
+   * Prende o apaga el bot sólo en ese chat, sin mandarle nada a la otra persona.
+   */
+  private async comandoDeLaDuena(e: EntranteSidecar): Promise<void> {
+    const comando = this.modoCentral.comando(e.text);
+    if (!comando || !CHAT_JID_VALIDO.test(e.chatJid ?? '')) return;
+    const contacto = await this.contactos.asegurar(e.chatJid, null, null);
+    const conv = await this.conversaciones.findOne({
+      where: { contactoId: contacto.id, estado: Not(EstadoConversacion.CERRADA) },
+      order: { createdAt: 'DESC' },
+    });
+    if (conv) {
+      await this.aplicarComandoBot(conv, comando, false);
+    } else {
+      await this.contactos.forzarBot(contacto.id, comando === 'on');
+      this.logger.log(`Bot ${comando === 'on' ? 'prendido' : 'apagado'} por la dueña en el chat de ${contacto.id}`);
+    }
+  }
+
+  private async aplicarComandoBot(conv: WhatsappConversacion, comando: 'on' | 'off', avisar = true): Promise<void> {
     const prender = comando === 'on';
     await this.contactos.forzarBot(conv.contactoId, prender);
     conv.contacto.botForzado = prender;
@@ -313,6 +348,10 @@ export class BotService {
     }
 
     this.logger.log(`Bot ${prender ? 'prendido' : 'apagado'} por comando en la charla ${conv.id}`);
+    if (!avisar) {
+      await this.publicarConversacion(conv);
+      return;
+    }
     await this.mensajes.enviarTexto(
       conv,
       prender

@@ -36,6 +36,7 @@ export interface RespuestaInput {
 export interface ConfigInput {
   botActivo?: boolean;
   derivacionActiva?: boolean;
+  soloChatsConComando?: boolean;
   horario?: HorarioAtencion;
   mensajes?: Partial<MensajesBot>;
   menuOpcion1?: string;
@@ -104,6 +105,7 @@ export class ConfigWhatsappService implements OnModuleInit {
     const fila = await this.obtener();
     if (input.botActivo !== undefined) fila.botActivo = Boolean(input.botActivo);
     if (input.derivacionActiva !== undefined) fila.derivacionActiva = Boolean(input.derivacionActiva);
+    if (input.soloChatsConComando !== undefined) fila.soloChatsConComando = Boolean(input.soloChatsConComando);
     if (input.horario !== undefined) {
       if (!horarioValido(input.horario)) {
         throw new BadRequestException('Horario inválido: días 1..7 y horas HH:mm, desde < hasta.');
