@@ -37,6 +37,22 @@ export function permitirMensaje(clave: string, ahora = Date.now()): boolean {
   return true;
 }
 
+/**
+ * "ok", "dale", "listo", "jaja", "👍"… sola: acusa recibo, no pregunta nada.
+ * "gracias" no entra acá: tiene su propia respuesta.
+ */
+const ACUSE = /^(ok+|oka+y?|okey|oki|dale+|listo|bueno|buenisimo|genial|perfecto|joya|barbaro|entendido|ya(\s+est[aá])?|a+h+|ja(ja)+|je(je)+|jsj\w*|(ja|je)+\s*(ja|je)+)$/;
+
+export function esAcuse(texto: string): boolean {
+  const t = normalizar(texto)
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, ' ')
+    .replace(/[!¡.,?¿\s]+/g, ' ')
+    .trim();
+  // Sólo emojis cuenta como acuse; un "?" suelto no (suele ser "¿me contestan?").
+  if (t === '') return /\p{Extended_Pictographic}/u.test(texto);
+  return ACUSE.test(t);
+}
+
 export function recortar(texto: string): string {
   const t = (texto ?? '').trim();
   return t.length > MAX_CARACTERES ? t.slice(0, MAX_CARACTERES) : t;

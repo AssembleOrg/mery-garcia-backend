@@ -570,3 +570,19 @@ export const RESPUESTAS_V4: RespuestaSemilla[] = [
       '\n\nLos servicios que hace Mery figuran como *By Mery García*. Si es tu primera vez con cosmetic tattoo, primero va la consulta previa obligatoria.',
   },
 ];
+
+/** Tanda 5: lo que salió de las pruebas de recepción. */
+export const VERSION_SEMILLA_V5 = 5;
+export const RESPUESTAS_V5: RespuestaSemilla[] = [
+  {
+    clave: 'TURNO_SIN_CODIGO',
+    titulo: 'No encuentra el código de reserva',
+    descripcion:
+      'No encuentra el código o el mail de su reserva, no le llegó o lo perdió (para reprogramar o gestionar su turno).',
+    ejemplos: ['no encuentro mi código', 'no me llegó el mail de la reserva', 'perdí el código de reserva', 'dónde veo mi código?'],
+    respuesta:
+      'El código de reserva te llegó por mail cuando reservaste: buscá un mail de *Mery García* y fijate también en Spam o Promociones. ' +
+      'Si no lo encontrás, te ayuda recepción con tu reserva 💕',
+    derivaAPersona: true,
+  },
+];

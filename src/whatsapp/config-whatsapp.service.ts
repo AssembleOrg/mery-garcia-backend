@@ -11,8 +11,15 @@ import {
   WhatsappConfig,
 } from './entities/WhatsappConfig.entity';
 import { WhatsappRespuesta } from './entities/WhatsappRespuesta.entity';
-import { RESPUESTAS_SEMILLA } from './respuestas.seed';
-import { RESPUESTAS_V2, RESPUESTAS_V4, VERSION_SEMILLA_V2, VERSION_SEMILLA_V4 } from './respuestas-v2.seed';
+import { RESPUESTAS_SEMILLA, type RespuestaSemilla } from './respuestas.seed';
+import {
+  RESPUESTAS_V2,
+  RESPUESTAS_V4,
+  RESPUESTAS_V5,
+  VERSION_SEMILLA_V2,
+  VERSION_SEMILLA_V4,
+  VERSION_SEMILLA_V5,
+} from './respuestas-v2.seed';
 import { horarioValido } from './horario';
 
 export interface RespuestaInput {
@@ -70,6 +77,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.sembrarNuevas();
       await this.renombrarTextos();
       await this.tandaTurnos();
+      await this.agregarTanda(VERSION_SEMILLA_V5, RESPUESTAS_V5);
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -205,12 +213,30 @@ export class ConfigWhatsappService implements OnModuleInit {
   private async sembrarSiEstaVacio(): Promise<void> {
     if ((await this.respuestas.count()) > 0) return;
     await this.respuestas.save(
-      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2, ...RESPUESTAS_V4].map((s, i) =>
+      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2, ...RESPUESTAS_V4, ...RESPUESTAS_V5].map((s, i) =>
         this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: i }),
       ),
     );
-    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V4 });
-    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length + RESPUESTAS_V4.length}`);
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V5 });
+    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length + RESPUESTAS_V4.length + RESPUESTAS_V5.length}`);
+  }
+
+  /** Agrega una sola vez una tanda de respuestas, sin pisar claves existentes. */
+  private async agregarTanda(version: number, tanda: RespuestaSemilla[]): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= version) return;
+    const claves = new Set((await this.respuestas.find({ select: { clave: true } })).map((r) => r.clave));
+    let orden = ((await this.respuestas.maximum('orden')) ?? -1) + 1;
+    const nuevas = tanda.filter((s) => !claves.has(s.clave));
+    if (nuevas.length) {
+      await this.respuestas.save(
+        nuevas.map((s) =>
+          this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: orden++ }),
+        ),
+      );
+    }
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: version });
+    this.logger.log(`Tanda ${version}: ${nuevas.length} respuestas nuevas`);
   }
 
   /**

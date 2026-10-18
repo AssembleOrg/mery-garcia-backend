@@ -11,7 +11,7 @@ import { CentralModoService } from './central/central-modo.service';
 import { NotificacionesService } from './notificaciones.service';
 import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
-import { esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
+import { esAcuse, esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
 import { completar, primerNombre, sinSaludo } from './personalizar';
 import { CatalogoService } from './catalogo.service';
@@ -38,10 +38,18 @@ export interface EntranteSidecar {
   timestamp: number | null;
 }
 
-/** Ventana para juntar una ráfaga ("hola" / "quiero turno" / "para cejas") en una sola consulta. */
-const DEBOUNCE_MS = 2_500;
+/**
+ * Ventana para juntar una ráfaga ("hola" / "quiero turno" / "para cejas") en una
+ * sola consulta: se contesta cuando pasa esto sin mensajes nuevos. Con 2,5 s,
+ * mensajes escritos a 8 s de distancia recibían una respuesta cada uno.
+ */
+const DEBOUNCE_MS = 10_000;
 /** Si la clienta sigue escribiendo, se espera esto desde el último "escribiendo…". */
-const DEBOUNCE_ESCRIBIENDO_MS = 5_000;
+const DEBOUNCE_ESCRIBIENDO_MS = 12_000;
+/** Tope de espera desde el primer mensaje de la ráfaga, aunque siga escribiendo. */
+const RAFAGA_MAXIMA_MS = 30_000;
+/** Respuestas que pueden repetirse sin que signifique "no le sirvió". */
+const PUEDEN_REPETIRSE = new Set(['SALUDO', 'GRACIAS']);
 /** Tope de un adjunto entrante que se guarda. */
 const MAX_ADJUNTO_BYTES = 16 * 1024 * 1024;
 const CHAT_JID_VALIDO = /^[0-9]{5,20}@(s\.whatsapp\.net|lid)$/;
@@ -74,7 +82,9 @@ const PRESENTARSE_DE_NUEVO_TRAS_MS = 3 * 60 * 60_000;
 export class BotService {
   private readonly logger = new Logger(BotService.name);
   /** conversacionId → textos acumulados + timer de la ráfaga. */
-  private readonly rafagas = new Map<string, { textos: string[]; timer: NodeJS.Timeout }>();
+  private readonly rafagas = new Map<string, { textos: string[]; timer: NodeJS.Timeout; chatJid: string; desde: number }>();
+  /** Una cosa a la vez por chat: dos respuestas nunca se cruzan ni se presentan dos veces. */
+  private readonly colas = new Map<string, Promise<unknown>>();
 
   constructor(
     @InjectRepository(WhatsappConversacion)
@@ -91,7 +101,22 @@ export class BotService {
     private readonly catalogo: CatalogoService,
   ) {}
 
-  async procesarEntrante(e: EntranteSidecar): Promise<void> {
+  /** Los entrantes de un mismo chat se procesan de a uno (y en orden). */
+  procesarEntrante(e: EntranteSidecar): Promise<void> {
+    return this.enSerie(e?.chatJid ?? '', () => this.procesar(e));
+  }
+
+  private enSerie<T>(clave: string, tarea: () => Promise<T>): Promise<T> {
+    const anterior = this.colas.get(clave) ?? Promise.resolve();
+    const actual = anterior.catch(() => undefined).then(tarea);
+    this.colas.set(clave, actual);
+    void actual.finally(() => {
+      if (this.colas.get(clave) === actual) this.colas.delete(clave);
+    }).catch(() => undefined);
+    return actual;
+  }
+
+  private async procesar(e: EntranteSidecar): Promise<void> {
     if (!e?.chatJid || !CHAT_JID_VALIDO.test(e.chatJid)) {
       this.logger.warn('Entrante con chatJid inválido, ignorado');
       return;
@@ -179,11 +204,13 @@ export class BotService {
       await this.derivar(conv, MotivoEspera.SEGURIDAD, [cfg.mensajes.derivacion]);
       return;
     }
+    // "ok", "dale", "jaja", 👍: es un acuse, no una consulta. No se contesta.
+    if (esAcuse(limpio)) return;
     if (pidePersona(limpio)) {
       await this.derivar(conv, MotivoEspera.PIDIO_PERSONA, [cfg.mensajes.derivacion]);
       return;
     }
-    this.encolar(conv.id, limpio);
+    this.encolar(conv.id, conv.contacto.chatJid, limpio);
   }
 
   /**
@@ -306,23 +333,35 @@ export class BotService {
     const rafaga = conv && this.rafagas.get(conv.id);
     if (!rafaga) return;
     clearTimeout(rafaga.timer);
-    rafaga.timer = setTimeout(() => void this.responder(conv.id), DEBOUNCE_ESCRIBIENDO_MS);
+    rafaga.timer = this.programar(conv.id, rafaga.chatJid, rafaga.desde, DEBOUNCE_ESCRIBIENDO_MS);
   }
 
   // ─── ráfaga / clasificación ────────────────────────────────────
 
-  private encolar(conversacionId: string, texto: string): void {
+  private encolar(conversacionId: string, chatJid: string, texto: string): void {
     const actual = this.rafagas.get(conversacionId);
     if (actual) {
       clearTimeout(actual.timer);
       actual.textos.push(texto);
-      actual.timer = setTimeout(() => void this.responder(conversacionId), DEBOUNCE_MS);
+      actual.timer = this.programar(conversacionId, chatJid, actual.desde, DEBOUNCE_MS);
       return;
     }
+    const desde = Date.now();
     this.rafagas.set(conversacionId, {
       textos: [texto],
-      timer: setTimeout(() => void this.responder(conversacionId), DEBOUNCE_MS),
+      chatJid,
+      desde,
+      timer: this.programar(conversacionId, chatJid, desde, DEBOUNCE_MS),
     });
+  }
+
+  /** Contesta tras `espera` sin novedades, sin pasarse del tope desde el primer mensaje. */
+  private programar(conversacionId: string, chatJid: string, desde: number, espera: number): NodeJS.Timeout {
+    const restante = Math.max(0, desde + RAFAGA_MAXIMA_MS - Date.now());
+    return setTimeout(
+      () => void this.enSerie(chatJid, () => this.responder(conversacionId)),
+      Math.min(espera, restante),
+    );
   }
 
   private async responder(conversacionId: string): Promise<void> {
@@ -384,6 +423,13 @@ export class BotService {
         await this.derivar(conv, MotivoEspera.NO_ENTENDIO, [cfg.mensajes.derivacion]);
         return;
       }
+      // La misma respuesta dos veces seguidas no ayuda ("no encuentro mi código" →
+      // otra vez "usá tu código"): si insiste en lo mismo, que la ayude recepción.
+      if (!PUEDEN_REPETIRSE.has(r.clave) && (await this.ultimaClaveDelBot(conv.id)) === r.clave) {
+        this.logger.log(`Respuesta repetida (${r.clave}) en ${conv.id}: no se repite`);
+        await this.derivar(conv, MotivoEspera.NO_ENTENDIO, [cfg.mensajes.derivacion]);
+        return;
+      }
       await this.responderCon(conv, r.clave, r.respuesta, r.derivaAPersona, cfg.mensajes.fueraDeHorario, cfg.horario);
     } catch (error) {
       this.logger.error(`Error respondiendo en ${conversacionId}: ${(error as Error).message}`);
@@ -428,6 +474,19 @@ export class BotService {
       .andWhere('m.createdAt > :desde', { desde })
       .getCount();
     return n > 0;
+  }
+
+  /** Clave de la última respuesta de la tabla que mandó el bot en la charla (sin comandos). */
+  private async ultimaClaveDelBot(conversacionId: string): Promise<string | null> {
+    const fila = await this.mensajesRepo
+      .createQueryBuilder('m')
+      .select('m.respuestaClave', 'clave')
+      .where('m.conversacionId = :conversacionId', { conversacionId })
+      .andWhere('m.autor = :autor', { autor: AutorMensaje.BOT })
+      .orderBy('m.createdAt', 'DESC')
+      .limit(1)
+      .getRawOne<{ clave: string | null }>();
+    return fila?.clave ?? null;
   }
 
   private botYaEscribio(conversacionId: string): Promise<boolean> {
