@@ -32,7 +32,7 @@ export interface EntranteSidecar {
   phone: string | null;
   pushName: string | null;
   waMessageId: string | null;
-  kind: 'texto' | 'audio' | 'imagen' | 'documento' | 'otro' | 'escribiendo';
+  kind: 'texto' | 'audio' | 'imagen' | 'documento' | 'otro' | 'escribiendo' | 'pausa';
   text: string;
   media: { base64: string; mime: string; fileName: string | null; seconds: number | null } | null;
   timestamp: number | null;
@@ -44,10 +44,16 @@ export interface EntranteSidecar {
  * mensajes escritos a 8 s de distancia recibían una respuesta cada uno.
  */
 const DEBOUNCE_MS = 10_000;
-/** Si la clienta sigue escribiendo, se espera esto desde el último "escribiendo…". */
-const DEBOUNCE_ESCRIBIENDO_MS = 12_000;
-/** Tope de espera desde el primer mensaje de la ráfaga, aunque siga escribiendo. */
-const RAFAGA_MAXIMA_MS = 30_000;
+/**
+ * Mientras figura "escribiendo…" no se contesta. WhatsApp repite el aviso
+ * mientras escribe y manda "pausa" cuando deja: si el aviso se corta sin pausa
+ * (se colgó la conexión), se contesta pasado este tiempo sin novedades.
+ */
+const DEBOUNCE_ESCRIBIENDO_MS = 25_000;
+/** Dejó de escribir sin mandar nada: se espera un poco más por si retoma. */
+const DEBOUNCE_PAUSA_MS = 8_000;
+/** Tope de espera desde el primer mensaje de la ráfaga (alguien que escribe muy despacio). */
+const RAFAGA_MAXIMA_MS = 3 * 60_000;
 /** Respuestas que pueden repetirse sin que signifique "no le sirvió". */
 const PUEDEN_REPETIRSE = new Set(['SALUDO', 'GRACIAS']);
 /** Tope de un adjunto entrante que se guarda. */
@@ -85,6 +91,8 @@ export class BotService {
   private readonly rafagas = new Map<string, { textos: string[]; timer: NodeJS.Timeout; chatJid: string; desde: number }>();
   /** Una cosa a la vez por chat: dos respuestas nunca se cruzan ni se presentan dos veces. */
   private readonly colas = new Map<string, Promise<unknown>>();
+  /** Último aviso de presencia de la clienta por charla: escribiendo o en pausa. */
+  private readonly presencia = new Map<string, { escribiendo: boolean; en: number }>();
 
   constructor(
     @InjectRepository(WhatsappConversacion)
@@ -210,6 +218,7 @@ export class BotService {
       await this.derivar(conv, MotivoEspera.PIDIO_PERSONA, [cfg.mensajes.derivacion]);
       return;
     }
+    this.presencia.set(conv.id, { escribiendo: false, en: Date.now() });
     this.encolar(conv.id, conv.contacto.chatJid, limpio);
   }
 
@@ -321,8 +330,8 @@ export class BotService {
    * posterga para no contestar a mitad de una frase partida en varios
    * mensajes. Sin ráfaga no hace nada (no hay nada que postergar).
    */
-  async clientaEscribiendo(chatJid: string): Promise<void> {
-    if (!CHAT_JID_VALIDO.test(chatJid) || this.rafagas.size === 0) return;
+  async clientaEscribiendo(chatJid: string, escribiendo = true): Promise<void> {
+    if (!CHAT_JID_VALIDO.test(chatJid) || (this.rafagas.size === 0 && this.colas.size === 0)) return;
     const contacto = await this.contactos.porChatJid(chatJid);
     if (!contacto) return;
     const conv = await this.conversaciones.findOne({
@@ -330,10 +339,45 @@ export class BotService {
       select: { id: true },
       order: { createdAt: 'DESC' },
     });
-    const rafaga = conv && this.rafagas.get(conv.id);
+    if (!conv) return;
+    this.presencia.set(conv.id, { escribiendo, en: Date.now() });
+    const rafaga = this.rafagas.get(conv.id);
     if (!rafaga) return;
     clearTimeout(rafaga.timer);
-    rafaga.timer = this.programar(conv.id, rafaga.chatJid, rafaga.desde, DEBOUNCE_ESCRIBIENDO_MS);
+    rafaga.timer = this.programar(
+      conv.id,
+      rafaga.chatJid,
+      rafaga.desde,
+      escribiendo ? DEBOUNCE_ESCRIBIENDO_MS : DEBOUNCE_PAUSA_MS,
+    );
+  }
+
+  /** ¿Figura escribiendo ahora? (un aviso viejo sin pausa deja de contar). */
+  private estaEscribiendo(conversacionId: string): boolean {
+    const p = this.presencia.get(conversacionId);
+    return Boolean(p?.escribiendo && Date.now() - p.en < DEBOUNCE_ESCRIBIENDO_MS);
+  }
+
+  /**
+   * Antes de contestar: si llegaron mensajes nuevos mientras se procesaba, o la
+   * clienta está escribiendo, la respuesta se posterga y se arma con todo junto.
+   * Devuelve true si se postergó.
+   */
+  private postergar(conversacionId: string, rafaga: { textos: string[]; chatJid: string; desde: number }): boolean {
+    const tope = Date.now() - rafaga.desde >= RAFAGA_MAXIMA_MS;
+    const nueva = this.rafagas.get(conversacionId);
+    if (nueva) {
+      // Lo que se estaba por contestar va adelante de lo nuevo, en una sola respuesta.
+      nueva.textos.unshift(...rafaga.textos);
+      nueva.desde = Math.min(nueva.desde, rafaga.desde);
+      return true;
+    }
+    if (tope || !this.estaEscribiendo(conversacionId)) return false;
+    this.rafagas.set(conversacionId, {
+      ...rafaga,
+      timer: this.programar(conversacionId, rafaga.chatJid, rafaga.desde, DEBOUNCE_ESCRIBIENDO_MS),
+    });
+    return true;
   }
 
   // ─── ráfaga / clasificación ────────────────────────────────────
@@ -368,6 +412,7 @@ export class BotService {
     const rafaga = this.rafagas.get(conversacionId);
     this.rafagas.delete(conversacionId);
     if (!rafaga) return;
+    if (this.postergar(conversacionId, rafaga)) return;
     const texto = rafaga.textos.join('\n');
 
     try {
@@ -395,6 +440,8 @@ export class BotService {
       const respuestas = await this.config.respuestasActivas();
       const contexto = await this.contextoReciente(conv.id);
       const { clave, disponible } = await this.clasificador.clasificar(texto, respuestas, contexto);
+      // Clasificar tarda: si mientras tanto escribió más, se contesta todo junto.
+      if (this.postergar(conversacionId, rafaga)) return;
 
       if (!disponible) {
         // Sin clasificador no adivinamos: mejor una persona que una respuesta equivocada.

@@ -581,7 +581,9 @@ export const RESPUESTAS_V5: RespuestaSemilla[] = [
       'No encuentra el código o el mail de su reserva, no le llegó o lo perdió (para reprogramar o gestionar su turno).',
     ejemplos: ['no encuentro mi código', 'no me llegó el mail de la reserva', 'perdí el código de reserva', 'dónde veo mi código?'],
     respuesta:
-      'El código de reserva te llegó por mail cuando reservaste: buscá un mail de *Mery García* y fijate también en Spam o Promociones. ' +
+      'El código de reserva te lo enviamos por mail en el momento en que hiciste la reserva en nuestra web de turnos (' +
+      WEB_TURNOS +
+      '). Buscá un mail de *Mery García* y fijate también en Spam o Promociones. ' +
       'Si no lo encontrás, te ayuda recepción con tu reserva 💕',
     derivaAPersona: true,
   },
