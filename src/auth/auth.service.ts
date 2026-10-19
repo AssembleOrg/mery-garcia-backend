@@ -17,9 +17,13 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string): Promise<any> {
-    const user = await this.personalRepository.findOne({
-      where: { email, activo: true },
-    });
+    // Email o usuario (los empleados entran con un usuario sin @), sin
+    // distinguir mayúsculas.
+    const user = await this.personalRepository
+      .createQueryBuilder('p')
+      .where('LOWER(p.email) = LOWER(:email)', { email: email.trim() })
+      .andWhere('p.activo = true')
+      .getOne();
 
     if (user && await bcrypt.compare(password, user.password)) {
       const { password, ...result } = user;
@@ -29,10 +33,7 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    console.log('loginDto', loginDto);
-    console.log('loginDto.password', loginDto.password);
     const user = await this.validateUser(loginDto.email, loginDto.password);
-    console.log('user', user);
     if (!user) {
       throw new UnauthorizedException('Credenciales inválidas');
     }
