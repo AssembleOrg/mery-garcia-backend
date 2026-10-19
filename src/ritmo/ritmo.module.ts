@@ -17,11 +17,23 @@ import { EventosService } from './eventos/eventos.service';
 import { ReportesController } from './reportes/reportes.controller';
 import { PendientesController } from './pendientes/pendientes.controller';
 import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
+import { ServiciosDiaService } from './servicios/servicios-dia.service';
+import { ServiciosController } from './servicios/servicios.controller';
+import { ResumenRitmoController } from './servicios/resumen-ritmo.controller';
+import { ConfirmacionServiciosDia } from './servicios/entities/ConfirmacionServiciosDia.entity';
+import { Trabajador } from 'src/personal/entities/Trabajador.entity';
+import { CategoriaServicio } from 'src/comanda/entities/categoriaServicio.entity';
 
 @Module({
   imports: [
     ConfigModule,
-    TypeOrmModule.forFeature([RitmoWebhookEvento, PatronTurno]),
+    TypeOrmModule.forFeature([
+      RitmoWebhookEvento,
+      PatronTurno,
+      ConfirmacionServiciosDia,
+      Trabajador,
+      CategoriaServicio,
+    ]),
   ],
   controllers: [
     RitmoController,
@@ -30,6 +42,8 @@ import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
     RitmoWebhooksController,
     ReportesController,
     PendientesController,
+    ServiciosController,
+    ResumenRitmoController,
   ],
   providers: [
     RitmoService,
@@ -40,6 +54,7 @@ import { AsistenciaPdfService } from './reportes/asistencia-pdf.service';
     RitmoWebhooksService,
     EventosService,
     AsistenciaPdfService,
+    ServiciosDiaService,
   ],
   exports: [RitmoService, TurnosService, PatronService, KioscoService, EventosService],
 })
