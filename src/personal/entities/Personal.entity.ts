@@ -8,6 +8,7 @@ import {
     CreateDateColumn,
     UpdateDateColumn,
     DeleteDateColumn,
+    Index,
 } from 'typeorm';
 import { RolPersonal } from 'src/enums/RolPersonal.enum';
 import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
@@ -42,6 +43,11 @@ export class Personal {
         default: RolPersonal.USER,
     })
     rol: RolPersonal;
+
+    /** Rol "empleado": el trabajador de la estética al que pertenece este acceso. */
+    @Index('uq_personal_trabajador', { unique: true, where: '"trabajadorId" IS NOT NULL' })
+    @Column({ type: 'uuid', nullable: true })
+    trabajadorId: string | null;
 
     @OneToMany(() => Comanda, comanda => comanda.creadoPor)
     comandasCreadas: Comanda[];

@@ -60,4 +60,8 @@ export enum TipoNotificacion {
   ESPERANDO = 'ESPERANDO',
   /** Llegó un mensaje en una charla que atiende (o espera) una persona. */
   MENSAJE = 'MENSAJE',
+  /** Un empleado pidió productos de stock: la tiene que aprobar el equipo. */
+  SOLICITUD_STOCK = 'SOLICITUD_STOCK',
+  /** Al empleado: le aprobaron o rechazaron una solicitud. */
+  SOLICITUD_RESUELTA = 'SOLICITUD_RESUELTA',
 }
