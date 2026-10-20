@@ -97,7 +97,31 @@ export class PrepagoGuardado {
   @Column({ type: 'varchar', length: 40, nullable: true })
   bookingCode?: string;
 
-  /** Fecha y hora del turno reservado. */
+  /** Fecha y hora del turno reservado (la vigente: se actualiza si se reprograma). */
   @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
   fechaTurno?: Date;
+
+  // ─── Seguimiento del turno (para análisis; no se muestra) ─────────────
+  // El historial completo, con antes/después y quién lo cambió, vive en
+  // prepago_turno_eventos. Estos campos son el resumen.
+
+  /** Id del servicio en booking (el nombre puede cambiar; el id no). Vigente. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  servicioIdReservado?: string;
+
+  /** Fecha y hora del turno cuando se pagó la seña (no cambia al reprogramar). */
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  fechaTurnoOriginal?: Date;
+
+  /** Servicio cuando se pagó la seña (no cambia al reprogramar). */
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  servicioOriginal?: string;
+
+  /** Cuántas veces se movió el turno (fecha, servicio o profesional). */
+  @Column({ type: 'int', default: 0 })
+  reprogramaciones: number;
+
+  /** Si la reserva se canceló en booking, cuándo. La seña no se toca: queda a criterio del local. */
+  @Column({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  turnoCanceladoEn?: Date;
 }

@@ -28,6 +28,21 @@ export interface FilaReservado {
   comandaFecha: string | null;
   serviciosTomados: string[];
   coincidencia: Coincidencia | null;
+  /** Turno y servicio cuando se pagó la seña (antes de cualquier reprogramación). */
+  fechaTurnoOriginal: string | null;
+  servicioOriginal: string | null;
+  /** Veces que se movió el turno (fecha, servicio o profesional). */
+  reprogramaciones: number;
+  /** La reserva se canceló en booking (la seña puede seguir activa). */
+  turnoCancelado: boolean;
+  /**
+   * Días entre el turno vigente y el día en que se usó la seña (0 = el mismo
+   * día; positivo = vino después; negativo = antes). Null si no se usó o no
+   * hay fecha de turno.
+   */
+  diasDesdeTurno: number | null;
+  /** Se usó el día del turno vigente, para el servicio reservado. */
+  usadaEnTiempoYForma: boolean | null;
 }
 
 export interface ReporteReservados {
@@ -116,6 +131,14 @@ export class ReporteReservadosService {
         comandaFecha: iso(comanda?.createdAt),
         serviciosTomados,
         coincidencia,
+        fechaTurnoOriginal: iso(sena.fechaTurnoOriginal),
+        servicioOriginal: sena.servicioOriginal ?? null,
+        reprogramaciones: sena.reprogramaciones ?? 0,
+        turnoCancelado: !!sena.turnoCanceladoEn,
+        diasDesdeTurno: comanda ? diasEntre(sena.fechaTurno, comanda.createdAt) : null,
+        usadaEnTiempoYForma: comanda
+          ? diasEntre(sena.fechaTurno, comanda.createdAt) === 0 && coincidencia === 'COINCIDE'
+          : null,
       });
     }
 
@@ -163,4 +186,12 @@ export class ReporteReservadosService {
 function iso(fecha: Date | string | null | undefined): string | null {
   if (!fecha) return null;
   return fecha instanceof Date ? fecha.toISOString() : new Date(fecha).toISOString();
+}
+
+/** Diferencia en días calendario (hora argentina) de `desde` a `hasta`. */
+function diasEntre(desde: Date | string | null | undefined, hasta: Date | string | null | undefined): number | null {
+  if (!desde || !hasta) return null;
+  const a = DateTime.fromJSDate(new Date(desde), { zone: TZ }).startOf('day');
+  const b = DateTime.fromJSDate(new Date(hasta), { zone: TZ }).startOf('day');
+  return Math.round(b.diff(a, 'days').days);
 }

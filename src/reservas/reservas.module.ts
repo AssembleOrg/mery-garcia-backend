@@ -5,6 +5,7 @@ import { PrepagoGuardado } from '../personal/entities/PrepagoGuardado.entity';
 import { Cliente } from '../cliente/entities/Cliente.entity';
 import { Comanda } from '../comanda/entities/Comanda.entity';
 import { ReservasController } from './reservas.controller';
+import { PrepagoTurnoEvento } from './entities/prepago-turno-evento.entity';
 import { ReservasService } from './reservas.service';
 import { ReporteReservadosService } from './reporte-reservados.service';
 import { ReporteReservadosPdfService } from './reporte-reservados-pdf.service';
@@ -17,7 +18,7 @@ import { ReservasReporteController } from './reservas-reporte.controller';
  * el servicio de la comanda donde se usa.
  */
 @Module({
-  imports: [ConfigModule, TypeOrmModule.forFeature([PrepagoGuardado, Cliente, Comanda])],
+  imports: [ConfigModule, TypeOrmModule.forFeature([PrepagoGuardado, Cliente, Comanda, PrepagoTurnoEvento])],
   controllers: [ReservasController, ReservasReporteController],
   providers: [ReservasService, ReporteReservadosService, ReporteReservadosPdfService, ServiciosBookingService],
   exports: [ReservasService],

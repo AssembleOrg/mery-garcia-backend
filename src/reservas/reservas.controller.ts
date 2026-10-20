@@ -3,7 +3,7 @@ import { ConfigType } from '@nestjs/config';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
 import bookingConfig from '../config/booking.config';
-import { ReservaPagadaDto, ReservasService } from './reservas.service';
+import { EventoTurnoDto, ReservaPagadaDto, ReservasService } from './reservas.service';
 
 /**
  * Entrada de reservas pagadas desde booking. Sin JWT: lo llama el servidor de
@@ -32,6 +32,20 @@ export class ReservasController {
       return { ok: false, error: 'no autorizado' };
     }
     return this.reservas.ingerirReservaPagada(dto);
+  }
+
+  /** Cambio del turno en booking (reprogramación, cancelación, carga inicial). */
+  @Post('booking/evento')
+  @HttpCode(200)
+  async eventoTurno(
+    @Headers('x-booking-secret') secret: string | undefined,
+    @Body() dto: EventoTurnoDto,
+  ) {
+    if (!this.secretValido(secret)) {
+      this.logger.warn('Evento de turno con secret inválido, ignorado');
+      return { ok: false, error: 'no autorizado' };
+    }
+    return this.reservas.registrarEvento(dto);
   }
 
   private secretValido(dado: string | undefined): boolean {
