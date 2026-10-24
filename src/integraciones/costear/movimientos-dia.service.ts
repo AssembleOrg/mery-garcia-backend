@@ -40,7 +40,7 @@ export class MovimientosDiaService {
           WHERE ${ingresoValido}
           ORDER BY c."createdAt"`,
           p,
-        ) as Promise<FilaComanda[]>,
+        ),
         // Las líneas de la comanda; si no tiene, las de sus ítems (como en los totales).
         this.ds.query(
           `SELECT c.id AS comanda_id, m.tipo::text AS tipo, m.moneda::text AS moneda, m.monto_final AS monto
@@ -52,7 +52,7 @@ export class MovimientosDiaService {
           WHERE m."deletedAt" IS NULL AND i."deletedAt" IS NULL AND ${ingresoValido}
             AND NOT EXISTS (SELECT 1 FROM metodos_pago x WHERE x."comandaId" = c.id AND x."deletedAt" IS NULL)`,
           p,
-        ) as Promise<FilaPago[]>,
+        ),
         this.ds.query(
           `SELECT i.comanda_id, i.nombre, i.cantidad, i.subtotal, t.nombre AS trabajador
            FROM item_comanda i JOIN comandas c ON c.id = i.comanda_id
@@ -60,7 +60,7 @@ export class MovimientosDiaService {
           WHERE i."deletedAt" IS NULL AND ${ingresoValido}
           ORDER BY i."createdAt"`,
           p,
-        ) as Promise<FilaItem[]>,
+        ),
         this.ds.query(
           `SELECT s.id, ${hora('s."fechaCreacion"')} AS hora, cl.nombre AS cliente, s."tipoPago"::text AS tipo_pago,
                 s.moneda::text AS moneda, s.monto, s.estado::text AS estado, s.observaciones,
@@ -71,7 +71,7 @@ export class MovimientosDiaService {
           WHERE s."deletedAt" IS NULL AND s.estado IN ('ACTIVO','UTILIZADO') AND ${rango('s."fechaCreacion"')}
           ORDER BY s."fechaCreacion"`,
           p,
-        ) as Promise<FilaSena[]>,
+        ),
         this.ds.query(
           `SELECT e.id, ${hora('c."createdAt"')} AS hora, e.caja::text AS caja, UPPER(e.moneda) AS moneda,
                 CASE WHEN UPPER(e.moneda) = 'USD' THEN e."totalDolar" ELSE e."totalPesos" END AS monto,
@@ -81,14 +81,14 @@ export class MovimientosDiaService {
           WHERE e."deletedAt" IS NULL AND ${egresoValido}
           ORDER BY c."createdAt"`,
           p,
-        ) as Promise<FilaEgreso[]>,
+        ),
         this.ds.query(
           `SELECT i.comanda_id, i.nombre, i.cantidad, i.subtotal, NULL AS trabajador
            FROM item_comanda i JOIN comandas c ON c.id = i.comanda_id
           WHERE i."deletedAt" IS NULL AND ${egresoValido}
           ORDER BY i."createdAt"`,
           p,
-        ) as Promise<FilaItem[]>,
+        ),
       ]);
 
     return armarMovimientos(
