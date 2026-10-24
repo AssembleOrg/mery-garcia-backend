@@ -12,6 +12,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
 import costearConfig from '../../config/costear.config';
 import { CajaTotalesService } from './caja-totales.service';
+import { MovimientosDiaService } from './movimientos-dia.service';
 
 /**
  * Lectura para Costear. Sin JWT: la llama el backend de Costear, autenticado
@@ -24,6 +25,7 @@ export class CostearController {
     @Inject(costearConfig.KEY)
     private readonly cfg: ConfigType<typeof costearConfig>,
     private readonly caja: CajaTotalesService,
+    private readonly movimientos: MovimientosDiaService,
   ) {}
 
   /** GET /api/integraciones/costear/caja?desde=AAAA-MM-DD&hasta=AAAA-MM-DD */
@@ -36,6 +38,22 @@ export class CostearController {
     if (!this.secretValido(secret)) throw new UnauthorizedException();
     try {
       return await this.caja.totales(desde ?? '', hasta ?? desde ?? '');
+    } catch (e) {
+      if (e instanceof Error && !('code' in e))
+        throw new BadRequestException(e.message);
+      throw e;
+    }
+  }
+
+  /** GET /api/integraciones/costear/movimientos?dia=AAAA-MM-DD — el detalle detrás de los totales. */
+  @Get('movimientos')
+  async movimientosDelDia(
+    @Headers('x-costear-secret') secret: string | undefined,
+    @Query('dia') dia: string,
+  ) {
+    if (!this.secretValido(secret)) throw new UnauthorizedException();
+    try {
+      return await this.movimientos.delDia(dia ?? '');
     } catch (e) {
       if (e instanceof Error && !('code' in e))
         throw new BadRequestException(e.message);
