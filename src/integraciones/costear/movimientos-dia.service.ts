@@ -30,7 +30,7 @@ export class MovimientosDiaService {
 
     const [comandas, pagos, items, senas, egresos, itemsEgreso] =
       await Promise.all([
-        this.ds.query(
+        this.ds.query<FilaComanda[]>(
           `SELECT c.id, c.numero, ${hora('c."createdAt"')} AS hora, c."estadoDeComanda"::text AS estado,
                 cl.nombre AS cliente, pe.nombre AS creado_por, c.observaciones,
                 c."precioPesos" AS precio_pesos, c."precioDolar" AS precio_dolar
@@ -42,7 +42,7 @@ export class MovimientosDiaService {
           p,
         ),
         // Las líneas de la comanda; si no tiene, las de sus ítems (como en los totales).
-        this.ds.query(
+        this.ds.query<FilaPago[]>(
           `SELECT c.id AS comanda_id, m.tipo::text AS tipo, m.moneda::text AS moneda, m.monto_final AS monto
            FROM metodos_pago m JOIN comandas c ON c.id = m."comandaId"
           WHERE m."deletedAt" IS NULL AND ${ingresoValido}
@@ -53,7 +53,7 @@ export class MovimientosDiaService {
             AND NOT EXISTS (SELECT 1 FROM metodos_pago x WHERE x."comandaId" = c.id AND x."deletedAt" IS NULL)`,
           p,
         ),
-        this.ds.query(
+        this.ds.query<FilaItem[]>(
           `SELECT i.comanda_id, i.nombre, i.cantidad, i.subtotal, t.nombre AS trabajador
            FROM item_comanda i JOIN comandas c ON c.id = i.comanda_id
            LEFT JOIN trabajadores t ON t.id = i.trabajador_id
@@ -61,7 +61,7 @@ export class MovimientosDiaService {
           ORDER BY i."createdAt"`,
           p,
         ),
-        this.ds.query(
+        this.ds.query<FilaSena[]>(
           `SELECT s.id, ${hora('s."fechaCreacion"')} AS hora, cl.nombre AS cliente, s."tipoPago"::text AS tipo_pago,
                 s.moneda::text AS moneda, s.monto, s.estado::text AS estado, s.observaciones,
                 s."servicioReservado" AS servicio,
@@ -72,7 +72,7 @@ export class MovimientosDiaService {
           ORDER BY s."fechaCreacion"`,
           p,
         ),
-        this.ds.query(
+        this.ds.query<FilaEgreso[]>(
           `SELECT e.id, ${hora('c."createdAt"')} AS hora, e.caja::text AS caja, UPPER(e.moneda) AS moneda,
                 CASE WHEN UPPER(e.moneda) = 'USD' THEN e."totalDolar" ELSE e."totalPesos" END AS monto,
                 c.numero, c.observaciones, pe.nombre AS creado_por, c.id AS comanda_id
@@ -82,7 +82,7 @@ export class MovimientosDiaService {
           ORDER BY c."createdAt"`,
           p,
         ),
-        this.ds.query(
+        this.ds.query<FilaItem[]>(
           `SELECT i.comanda_id, i.nombre, i.cantidad, i.subtotal, NULL AS trabajador
            FROM item_comanda i JOIN comandas c ON c.id = i.comanda_id
           WHERE i."deletedAt" IS NULL AND ${egresoValido}
