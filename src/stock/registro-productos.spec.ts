@@ -172,5 +172,7 @@ describe('registro de productos desde Ritmo', () => {
     expect(votanteAutorizado('5491144443333', votantes)).toBe(false);
     expect(votanteAutorizado('', votantes)).toBe(false);
     expect(votanteAutorizado('5491155556666', [])).toBe(false);
+    expect(votanteAutorizado('5491144443333', ['*'])).toBe(true);
+    expect(votanteAutorizado('', ['*'])).toBe(true);
   });
 });

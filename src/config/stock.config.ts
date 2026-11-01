@@ -3,7 +3,7 @@ import { registerAs } from '@nestjs/config';
 const lista = (v: string | undefined) =>
   (v ?? '')
     .split(',')
-    .map((x) => x.replace(/\D/g, ''))
+    .map((x) => (x.trim() === '*' ? '*' : x.replace(/\D/g, '')))
     .filter(Boolean);
 
 /**
@@ -17,7 +17,7 @@ export default registerAs('stock', () => ({
   botSecret: process.env.BOT_PARTNER_SECRET ?? '',
   /** Chat al que va el aviso: jid del grupo (…@g.us) o un teléfono. */
   chat: process.env.STOCK_WHATSAPP_CHAT ?? '',
-  /** Teléfonos (sólo dígitos) cuyos votos cuentan. */
+  /** Teléfonos (sólo dígitos) cuyos votos cuentan; `*` = cualquiera del chat. */
   votantes: lista(process.env.STOCK_VOTANTES),
   /** Con esto se identifica el bot cuando avisa un voto. */
   callbackSecret: process.env.STOCK_POLL_CALLBACK_SECRET ?? '',

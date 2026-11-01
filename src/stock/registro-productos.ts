@@ -208,11 +208,15 @@ export function decisionDelVoto(
   return anula ? EstadoSolicitudStock.RECHAZADA : EstadoSolicitudStock.APROBADA;
 }
 
-/** El teléfono vota si está en la lista (comparando los últimos 10 dígitos). */
+/**
+ * El teléfono vota si está en la lista (comparando los últimos 10 dígitos).
+ * `*` en la lista: vale cualquiera del chat, aunque no se sepa su teléfono.
+ */
 export function votanteAutorizado(
   telefono: string,
   votantes: string[],
 ): boolean {
+  if (votantes.includes('*')) return true;
   const t = telefono.replace(/\D/g, '');
   if (t.length < 8) return false;
   const cola = (x: string) => x.slice(-10);
