@@ -261,9 +261,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
         status: 'PENDING',
         canCancel: true,
       });
-      expect(rec.statusLabel).toMatch(
-        /^Se confirma sola a las \d\d:\d\d$/,
-      );
+      expect(rec.statusLabel).toMatch(/^Se confirma sola a las \d\d:\d\d$/);
       expect(rec.items).toEqual(
         expect.arrayContaining([
           { name: 'Shampoo neutro', quantity: 1, freeText: false },
