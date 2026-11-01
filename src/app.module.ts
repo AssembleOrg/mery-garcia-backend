@@ -10,6 +10,7 @@ import serverConfig from './config/server.config';
 import postgresDbConfig from './config/postgresDb.config';
 import digitalOceanConfig from './config/digitalOcean.config';
 import ritmoConfig from './config/ritmo.config';
+import stockConfig from './config/stock.config';
 import whatsappConfig from './config/whatsapp.config';
 import bookingConfig from './config/booking.config';
 import costearConfig from './config/costear.config';
@@ -46,6 +47,7 @@ import { StockModule } from './stock/stock.module';
         postgresDbConfig,
         digitalOceanConfig,
         ritmoConfig,
+        stockConfig,
         whatsappConfig,
         bookingConfig,
         costearConfig,

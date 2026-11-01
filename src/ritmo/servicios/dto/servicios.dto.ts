@@ -39,4 +39,9 @@ export class VincularRitmoDto {
   @IsOptional()
   @IsBoolean()
   ritmoConfirmaServicios?: boolean;
+
+  /** Puede anotar en Ritmo los productos que agarra. */
+  @IsOptional()
+  @IsBoolean()
+  ritmoRegistraProductos?: boolean;
 }

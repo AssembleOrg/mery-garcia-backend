@@ -97,6 +97,16 @@ export class FiltroSolicitudesStockDto {
   @IsOptional()
   @IsUUID()
   trabajadorId?: string;
+
+  @ApiProperty({ required: false, example: '2026-11-01' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'desde tiene que ser AAAA-MM-DD' })
+  desde?: string;
+
+  @ApiProperty({ required: false, example: '2026-11-30' })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'hasta tiene que ser AAAA-MM-DD' })
+  hasta?: string;
 }
 
 export class GuardarAccesoEmpleadoDto {

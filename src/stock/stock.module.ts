@@ -13,6 +13,10 @@ import { StockService } from './stock.service';
 import { SolicitudesStockService } from './solicitudes-stock.service';
 import { AccesosEmpleadoService } from './accesos-empleado.service';
 import { StockController } from './stock.controller';
+import { RegistroRitmoService } from './registro-ritmo.service';
+import { RegistroRitmoController } from './registro-ritmo.controller';
+import { AvisoWhatsappStockService } from './aviso-whatsapp-stock.service';
+import { VotosWhatsappController } from './votos-whatsapp.controller';
 
 @Module({
   imports: [
@@ -26,7 +30,17 @@ import { StockController } from './stock.controller';
     WhatsappModule,
     PushModule,
   ],
-  controllers: [StockController],
-  providers: [StockService, SolicitudesStockService, AccesosEmpleadoService],
+  controllers: [
+    StockController,
+    RegistroRitmoController,
+    VotosWhatsappController,
+  ],
+  providers: [
+    StockService,
+    SolicitudesStockService,
+    AccesosEmpleadoService,
+    RegistroRitmoService,
+    AvisoWhatsappStockService,
+  ],
 })
 export class StockModule {}

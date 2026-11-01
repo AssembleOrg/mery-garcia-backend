@@ -13,6 +13,12 @@ import { Trabajador } from '../../personal/entities/Trabajador.entity';
 import { Personal } from '../../personal/entities/Personal.entity';
 import { ProductoStock } from './ProductoStock.entity';
 
+/** Desde dónde se cargó: el panel (acceso de empleado) o la app de Ritmo. */
+export enum OrigenSolicitudStock {
+  PANEL = 'PANEL',
+  RITMO = 'RITMO',
+}
+
 export enum EstadoSolicitudStock {
   PENDIENTE = 'PENDIENTE',
   APROBADA = 'APROBADA',
@@ -39,9 +45,31 @@ export class SolicitudStock {
   @JoinColumn({ name: 'trabajadorId' })
   trabajador: Trabajador;
 
-  /** Quién la cargó (el acceso del empleado). */
-  @Column({ type: 'uuid' })
-  solicitadaPorId: string;
+  /** Quién la cargó (el acceso del empleado). Null si vino de Ritmo. */
+  @Column({ type: 'uuid', nullable: true })
+  solicitadaPorId: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 10,
+    default: OrigenSolicitudStock.PANEL,
+  })
+  origen: OrigenSolicitudStock;
+
+  /** La persona de Ritmo que la anotó, si vino de Ritmo. */
+  @Column({ type: 'uuid', nullable: true })
+  ritmoUserId: string | null;
+
+  /**
+   * Quién la resolvió cuando no fue alguien del panel: "Charly (WhatsApp)",
+   * "Automática". Si la resolvió alguien del panel, está en `resueltaPor`.
+   */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  resueltaPorNombre: string | null;
+
+  /** Id del mensaje (encuesta) que se mandó al grupo de WhatsApp. */
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  whatsappMensajeId: string | null;
 
   @Column({
     type: 'enum',
@@ -103,6 +131,10 @@ export class SolicitudStockItem {
 
   @Column({ length: 150 })
   productoNombre: string;
+
+  /** Lo escribió ella porque no estaba en el catálogo. */
+  @Column({ type: 'boolean', default: false })
+  libre: boolean;
 
   @Column({ type: 'smallint', default: 1 })
   cantidad: number;

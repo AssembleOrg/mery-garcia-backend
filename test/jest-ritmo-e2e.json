@@ -6,7 +6,7 @@
   ],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "test/ritmo-servicios\\.e2e-spec\\.ts$",
+  "testRegex": "test/(ritmo-servicios|registro-productos)\\.e2e-spec\\.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },

@@ -12,8 +12,8 @@ import {
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { timingSafeEqual } from 'node:crypto';
 import ritmoConfig from '../../config/ritmo.config';
+import { secretoIgual } from '../../common/utils/secreto-igual';
 import { ServiciosDiaService } from './servicios-dia.service';
 import { validarDia } from './resumen';
 import { ConfirmarResumenDto } from './dto/servicios.dto';
@@ -81,10 +81,6 @@ export class ResumenRitmoController {
   }
 
   private secretValido(dado: string | undefined): boolean {
-    const esperado = this.cfg.resumenSecret;
-    if (!esperado || !dado) return false;
-    const a = Buffer.from(dado);
-    const b = Buffer.from(esperado);
-    return a.length === b.length && timingSafeEqual(a, b);
+    return secretoIgual(this.cfg.resumenSecret, dado);
   }
 }
