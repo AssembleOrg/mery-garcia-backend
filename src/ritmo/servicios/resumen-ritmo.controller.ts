@@ -15,6 +15,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
 import ritmoConfig from '../../config/ritmo.config';
 import { ServiciosDiaService } from './servicios-dia.service';
+import { validarDia } from './resumen';
 import { ConfirmarResumenDto } from './dto/servicios.dto';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -46,6 +47,9 @@ export class ResumenRitmoController {
       throw new BadRequestException('Falta userId.');
     if (!day) throw new BadRequestException('Falta day.');
     try {
+      // Antes del arranque no hay nada que mostrar ni que confirmar.
+      if (validarDia(day) < this.cfg.resumenDesde)
+        return { available: false, day };
       return await this.servicios.resumenParaRitmo(userId, day);
     } catch (e) {
       if (e instanceof Error && !('status' in e))
@@ -63,6 +67,11 @@ export class ResumenRitmoController {
   ) {
     if (!this.secretValido(secret)) throw new UnauthorizedException();
     try {
+      if (validarDia(dto.day) < this.cfg.resumenDesde) {
+        throw new BadRequestException(
+          `El resumen de servicios arranca el ${this.cfg.resumenDesde.split('-').reverse().join('/')}: ese día no se confirma.`,
+        );
+      }
       return await this.servicios.confirmarDesdeRitmo(dto);
     } catch (e) {
       if (e instanceof Error && !('status' in e))

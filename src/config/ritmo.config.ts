@@ -12,4 +12,9 @@ export default registerAs('ritmo', () => ({
    * fuente (Configuración → Integraciones → Resumen de jornada).
    */
   resumenSecret: process.env.RITMO_RESUMEN_SECRET ?? '',
+  /**
+   * Primer día (AAAA-MM-DD) que se le muestra y se le pide confirmar a cada
+   * una en Ritmo. Lo anterior no se reabre: arrancó con noviembre 2026.
+   */
+  resumenDesde: process.env.RITMO_RESUMEN_DESDE || '2026-11-01',
 }));

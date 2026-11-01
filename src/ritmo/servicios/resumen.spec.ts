@@ -2,7 +2,9 @@ import {
   armarLineas,
   armarResumen,
   coincideNombre,
+  confirmacionObligatoria,
   detalleValidacion,
+  etiquetaComandas,
   validarDia,
 } from './resumen';
 
@@ -54,6 +56,7 @@ describe('resumen de servicios del día para Ritmo', () => {
     const sin = armarResumen({
       dia: '2026-10-19',
       lineas,
+      comandas: 4,
       confirmacionObligatoria: true,
       confirmacion: null,
     });
@@ -66,6 +69,9 @@ describe('resumen de servicios del día para Ritmo', () => {
       agreed: null,
       note: null,
     });
+    expect(sin.highlights).toEqual([
+      { key: 'comandas', label: 'comandas', count: 4 },
+    ]);
     expect(sin.items[0]).toEqual({
       key: 'a',
       label: 'Categoría A',
@@ -76,6 +82,7 @@ describe('resumen de servicios del día para Ritmo', () => {
     const con = armarResumen({
       dia: '2026-10-19',
       lineas,
+      comandas: 4,
       confirmacionObligatoria: false,
       confirmacion: {
         confirmadoEn: new Date('2026-10-19T21:00:00Z'),
@@ -93,11 +100,20 @@ describe('resumen de servicios del día para Ritmo', () => {
     const vacio = armarResumen({
       dia: '2026-10-19',
       lineas: armarLineas(CATS, []),
+      comandas: 0,
       confirmacionObligatoria: true,
       confirmacion: null,
     });
     expect(vacio.total).toBe(0);
     expect(vacio.note).toBeNull();
+  });
+
+  it('confirma obligatoria si está marcada o si ese día tuvo comandas', () => {
+    expect(confirmacionObligatoria(true, 0)).toBe(true);
+    expect(confirmacionObligatoria(false, 1)).toBe(true);
+    expect(confirmacionObligatoria(false, 0)).toBe(false);
+    expect(etiquetaComandas(1)).toBe('comanda');
+    expect(etiquetaComandas(7)).toBe('comandas');
   });
 
   it('vincula por primer nombre, sin acentos, cuando no hay ritmoUserId', () => {

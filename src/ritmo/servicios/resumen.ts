@@ -34,6 +34,8 @@ export interface ResumenParaRitmo {
   available: true;
   day: string;
   title: string;
+  /** El número que va arriba de todo: en cuántas comandas estuvo. */
+  highlights: { key: string; label: string; count: number }[];
   items: { key: string; label: string; count: number; detail: string }[];
   total: number;
   note: string | null;
@@ -120,9 +122,26 @@ export function armarLineas(
   return lineas;
 }
 
+/** "1 comanda" / "7 comandas". */
+export const etiquetaComandas = (n: number) =>
+  n === 1 ? 'comanda' : 'comandas';
+
+/**
+ * Tiene que confirmar si está marcada para hacerlo siempre (Luna, Rosario) o
+ * si ese día figura en alguna comanda (Ivonne sólo los días que atendió).
+ */
+export function confirmacionObligatoria(
+  confirmaSiempre: boolean,
+  comandas: number,
+): boolean {
+  return confirmaSiempre || comandas > 0;
+}
+
 export function armarResumen(input: {
   dia: string;
   lineas: LineaResumen[];
+  /** Comandas distintas con algún ítem a su nombre ese día. */
+  comandas: number;
   confirmacionObligatoria: boolean;
   confirmacion: ConfirmacionVista | null;
 }): ResumenParaRitmo {
@@ -135,6 +154,13 @@ export function armarResumen(input: {
     available: true,
     day: input.dia,
     title: 'Servicios del día',
+    highlights: [
+      {
+        key: 'comandas',
+        label: etiquetaComandas(input.comandas),
+        count: input.comandas,
+      },
+    ],
     items: input.lineas.map(({ key, label, count, detail }) => ({
       key,
       label,

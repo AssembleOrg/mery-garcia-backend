@@ -53,6 +53,10 @@ export class ConfirmacionServiciosDia {
   @Column({ type: 'jsonb' })
   resumen: LineaResumenConfirmado[];
 
+  /** En cuántas comandas figuraba al confirmar (null: confirmado antes de contarlas). */
+  @Column({ type: 'int', nullable: true })
+  comandas: number | null;
+
   /** Id de la marca de salida en Ritmo, si confirmó al cerrar el turno. */
   @Column({ type: 'uuid', nullable: true })
   ritmoPunchId: string | null;

@@ -70,6 +70,8 @@ if (!URL || !URL.includes('mery_boot_test')) {
 
     beforeAll(async () => {
       process.env.RITMO_RESUMEN_SECRET = SECRET;
+      // Arranque dos días atrás: anteayer entra, el día anterior no.
+      process.env.RITMO_RESUMEN_DESDE = sumarDias(hoy, -2);
       const modulo = await Test.createTestingModule({
         imports: [
           ConfigModule.forRoot({
@@ -245,6 +247,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
       await item(c4, laminado, luna, 4); // egreso: no cuenta
       const c5 = await comanda(EstadoDeComanda.TRASPASADA, ayer, '01-0005');
       await item(c5, tinte, luna, 2);
+      await item(c5, crema, ivonne); // sólo un producto: estuvo en la comanda
       const c6 = await comanda(EstadoDeComanda.PENDIENTE, hoy, '01-0006');
       const borrado = await item(c6, laminado, luna, 7);
       await items.softRemove(borrado); // ítem borrado: no cuenta
@@ -334,6 +337,10 @@ if (!URL || !URL.includes('mery_boot_test')) {
         },
       ]);
       expect(d.total).toBe(5);
+      // c1 y c2: la cancelada, el egreso y la del ítem borrado no cuentan.
+      expect(d.highlights).toEqual([
+        { key: 'comandas', label: 'comandas', count: 2 },
+      ]);
       expect(d.confirmation).toEqual({
         required: true,
         confirmedAt: null,
@@ -350,19 +357,40 @@ if (!URL || !URL.includes('mery_boot_test')) {
         ).count,
       ).toBe(2);
       expect(r.body.data.total).toBe(2);
+      expect(r.body.data.highlights[0]).toEqual({
+        key: 'comandas',
+        label: 'comanda',
+        count: 1,
+      });
     });
 
-    it('Rosario sin ritmoUserId se resuelve por nombre; Ivonne no está obligada; Karina no tiene nada', async () => {
+    it('Rosario sin ritmoUserId se resuelve por nombre; Ivonne confirma sólo si tuvo comandas; Karina no tiene nada', async () => {
       const ro = await get({ userId: ROSARIO_RITMO, day: hoy });
       expect(ro.body.data.total).toBe(3);
       expect(ro.body.data.confirmation.required).toBe(true);
       const iv = await get({ userId: IVONNE_RITMO, day: hoy });
       expect(iv.body.data.available).toBe(true);
       expect(iv.body.data.total).toBe(0);
+      expect(iv.body.data.highlights[0].count).toBe(0);
       expect(iv.body.data.confirmation.required).toBe(false);
+      // El día que figura en una comanda (aunque sea por un producto) confirma.
+      const ivAyer = await get({ userId: IVONNE_RITMO, day: ayer });
+      expect(ivAyer.body.data.total).toBe(0);
+      expect(ivAyer.body.data.highlights[0].count).toBe(1);
+      expect(ivAyer.body.data.confirmation.required).toBe(true);
       const ka = await get({ userId: KARINA_RITMO, day: hoy });
       expect(ka.status).toBe(200);
       expect(ka.body.data).toEqual({ available: false, day: hoy });
+    });
+
+    it('antes del día de arranque no muestra nada ni deja confirmar', async () => {
+      const antes = sumarDias(hoy, -3);
+      const r = await get({ userId: LUNA_RITMO, day: antes });
+      expect(r.status).toBe(200);
+      expect(r.body.data).toEqual({ available: false, day: antes });
+      const c = await post({ userId: LUNA_RITMO, day: antes, agreed: true });
+      expect(c.status).toBe(400);
+      expect(c.body.message).toMatch(/arranca el/);
     });
 
     it('rechaza pedidos mal armados', async () => {
@@ -426,6 +454,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
       expect(filas).toHaveLength(1);
       expect(filas[0].trabajadorId).toBe(luna.id);
       expect(filas[0].ritmoPunchId).toBeNull();
+      expect(filas[0].comandas).toBe(2);
       expect(
         filas[0].resumen.map((l) => [l.label, l.count, l.validadas]),
       ).toEqual([
@@ -443,13 +472,15 @@ if (!URL || !URL.includes('mery_boot_test')) {
         lista.map((d) => [
           d.dia,
           d.nombre,
+          d.comandas,
           d.total,
           d.confirmacion?.conforme ?? null,
         ]),
       ).toEqual([
-        [ayer, 'Luna', 2, null],
-        [hoy, 'Luna', 5, true],
-        [hoy, 'Rosario', 3, null],
+        [ayer, 'Ivonne', 1, 0, null],
+        [ayer, 'Luna', 1, 2, null],
+        [hoy, 'Luna', 2, 5, true],
+        [hoy, 'Rosario', 1, 3, null],
       ]);
       await expect(servicios.listar(hoy, ayer)).rejects.toThrow('anterior');
 
@@ -473,8 +504,14 @@ if (!URL || !URL.includes('mery_boot_test')) {
       });
       expect(v.ritmoUserId).toBe(ROSARIO_RITMO);
       expect(v.sugerencia).toBeNull();
+      // Desmarcada, pero hoy está en una comanda: igual confirma.
       const r = await get({ userId: ROSARIO_RITMO, day: hoy });
-      expect(r.body.data.confirmation.required).toBe(false);
+      expect(r.body.data.confirmation.required).toBe(true);
+      const sinNada = await get({
+        userId: ROSARIO_RITMO,
+        day: sumarDias(ayer, -1),
+      });
+      expect(sinNada.body.data.confirmation.required).toBe(false);
       expect(ivonne.id).toBeTruthy();
     });
   });

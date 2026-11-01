@@ -15,11 +15,17 @@ import {
   armarLineas,
   armarResumen,
   coincideNombre,
+  confirmacionObligatoria,
   validarDia,
   type LineaResumen,
   type ResumenParaRitmo,
 } from './resumen';
-import { FilaSqlServicios, SQL_SERVICIOS_POR_DIA } from './servicios-dia.sql';
+import {
+  FilaSqlComandas,
+  FilaSqlServicios,
+  SQL_COMANDAS_POR_DIA,
+  SQL_SERVICIOS_POR_DIA,
+} from './servicios-dia.sql';
 
 interface PersonalRitmo {
   people: { id: string; fullName: string; role: string; isActive: boolean }[];
@@ -30,6 +36,8 @@ export interface DiaDeTrabajadora {
   trabajadorId: string;
   nombre: string;
   dia: string;
+  /** En cuántas comandas estuvo ese día. */
+  comandas: number;
   lineas: LineaResumen[];
   total: number;
   confirmacion: {
@@ -90,8 +98,9 @@ export class ServiciosDiaService {
     const trabajadora = await this.trabajadoraDeRitmo(ritmoUserId);
     if (!trabajadora) return { available: false, day };
 
-    const [lineas, confirmacion] = await Promise.all([
+    const [lineas, comandas, confirmacion] = await Promise.all([
       this.lineasDe(trabajadora.id, day),
+      this.comandasDe(trabajadora.id, day),
       this.confirmaciones.findOne({
         where: { trabajadorId: trabajadora.id, dia: day },
       }),
@@ -99,7 +108,11 @@ export class ServiciosDiaService {
     return armarResumen({
       dia: day,
       lineas,
-      confirmacionObligatoria: trabajadora.ritmoConfirmaServicios,
+      comandas,
+      confirmacionObligatoria: confirmacionObligatoria(
+        trabajadora.ritmoConfirmaServicios,
+        comandas,
+      ),
       confirmacion,
     });
   }
@@ -126,7 +139,10 @@ export class ServiciosDiaService {
       throw new BadRequestException('Si no coincide, hace falta decir qué.');
     }
 
-    const lineas = await this.lineasDe(trabajadora.id, day);
+    const [lineas, comandas] = await Promise.all([
+      this.lineasDe(trabajadora.id, day),
+      this.comandasDe(trabajadora.id, day),
+    ]);
     const ahora = new Date();
     const existente = await this.confirmaciones.findOne({
       where: { trabajadorId: trabajadora.id, dia: day },
@@ -143,6 +159,7 @@ export class ServiciosDiaService {
       count,
       validadas,
     }));
+    fila.comandas = comandas;
     fila.ritmoPunchId = input.punchId ?? null;
     fila.confirmadoEn = ahora;
     await this.confirmaciones.save(fila);
@@ -162,11 +179,15 @@ export class ServiciosDiaService {
     const h = validarDia(hasta);
     if (h < d) throw new BadRequestException('"hasta" es anterior a "desde".');
 
-    const [categorias, filas, trabajadoras, confirmaciones] = await Promise.all(
-      [
+    const [categorias, filas, comandas, trabajadoras, confirmaciones] =
+      await Promise.all([
         this.categoriasOrdenadas(),
         this.trabajadores.manager.query<FilaSqlServicios[]>(
           SQL_SERVICIOS_POR_DIA,
+          [TZ_EMPRESA, d, h, null],
+        ),
+        this.trabajadores.manager.query<FilaSqlComandas[]>(
+          SQL_COMANDAS_POR_DIA,
           [TZ_EMPRESA, d, h, null],
         ),
         this.trabajadores.find({ withDeleted: true }),
@@ -174,11 +195,14 @@ export class ServiciosDiaService {
           .createQueryBuilder('c')
           .where('c.dia BETWEEN :d AND :h', { d, h })
           .getMany(),
-      ],
-    );
+      ]);
     const nombres = new Map(trabajadoras.map((t) => [t.id, t.nombre]));
     const confirmadas = new Map(
       confirmaciones.map((c) => [`${c.trabajadorId}|${c.dia}`, c]),
+    );
+
+    const comandasPorClave = new Map(
+      comandas.map((f) => [`${f.trabajadorId}|${f.dia}`, f.comandas]),
     );
 
     const porClave = new Map<string, FilaSqlServicios[]>();
@@ -186,6 +210,9 @@ export class ServiciosDiaService {
       const clave = `${f.trabajadorId}|${f.dia}`;
       porClave.set(clave, [...(porClave.get(clave) ?? []), f]);
     }
+    // Si sólo vendió productos, estuvo en comandas aunque no hizo servicios.
+    for (const clave of comandasPorClave.keys())
+      if (!porClave.has(clave)) porClave.set(clave, []);
     // Un día confirmado sin servicios también es un renglón: dijo que no hizo nada.
     for (const clave of confirmadas.keys())
       if (!porClave.has(clave)) porClave.set(clave, []);
@@ -199,6 +226,7 @@ export class ServiciosDiaService {
           trabajadorId,
           nombre: nombres.get(trabajadorId) ?? '(sin nombre)',
           dia,
+          comandas: comandasPorClave.get(clave) ?? 0,
           lineas,
           total: lineas.reduce((s, l) => s + l.count, 0),
           confirmacion: c
@@ -290,6 +318,14 @@ export class ServiciosDiaService {
       ),
     ]);
     return armarLineas(categorias, filas);
+  }
+
+  private async comandasDe(trabajadorId: string, dia: string): Promise<number> {
+    const filas = await this.trabajadores.manager.query<FilaSqlComandas[]>(
+      SQL_COMANDAS_POR_DIA,
+      [TZ_EMPRESA, dia, dia, trabajadorId],
+    );
+    return filas[0]?.comandas ?? 0;
   }
 
   private async categoriasOrdenadas(): Promise<

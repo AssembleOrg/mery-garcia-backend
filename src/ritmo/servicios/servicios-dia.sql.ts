@@ -36,3 +36,32 @@ export interface FilaSqlServicios {
   cantidad: number;
   validadas: number;
 }
+
+/**
+ * En cuántas comandas estuvo cada trabajadora cada día: comandas de ingreso
+ * no canceladas ni borradas con al menos un ítem a su nombre (servicio o
+ * producto). Una comanda con dos servicios suyos cuenta una vez.
+ *
+ * Mismos parámetros que SQL_SERVICIOS_POR_DIA.
+ */
+export const SQL_COMANDAS_POR_DIA = `
+  SELECT ic.trabajador_id                                    AS "trabajadorId",
+         to_char(c."createdAt" AT TIME ZONE $1, 'YYYY-MM-DD') AS dia,
+         COUNT(DISTINCT c.id)::int                            AS comandas
+    FROM item_comanda ic
+    JOIN comandas c ON c.id = ic.comanda_id
+   WHERE ic."deletedAt" IS NULL
+     AND c."deletedAt" IS NULL
+     AND ic.trabajador_id IS NOT NULL
+     AND c."tipoDeComanda" = 'INGRESO'
+     AND c."estadoDeComanda" <> 'CANCELADA'
+     AND (c."createdAt" AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+     AND ($4::uuid IS NULL OR ic.trabajador_id = $4::uuid)
+   GROUP BY ic.trabajador_id, dia
+`;
+
+export interface FilaSqlComandas {
+  trabajadorId: string;
+  dia: string;
+  comandas: number;
+}
