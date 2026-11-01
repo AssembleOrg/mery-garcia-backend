@@ -96,6 +96,13 @@ export class Trabajador {
   @Column({ type: 'boolean', default: true })
   ritmoConfirmaServicios: boolean;
 
+  /**
+   * Puede anotar en Ritmo los productos que agarra (shampoo, cremas,
+   * hisopos). No es obligatorio usarlo; esto sólo le muestra la opción.
+   */
+  @Column({ type: 'boolean', default: false })
+  ritmoRegistraProductos: boolean;
+
   @OneToMany(() => ItemComanda, (item) => item.trabajador)
   items: ItemComanda[];
 

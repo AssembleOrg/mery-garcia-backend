@@ -53,6 +53,8 @@ export interface VinculoRitmo {
   activo: boolean;
   ritmoUserId: string | null;
   ritmoConfirmaServicios: boolean;
+  /** Puede anotar productos desde Ritmo. */
+  ritmoRegistraProductos: boolean;
   /** Persona de Ritmo que coincide por nombre, si no está vinculada a mano. */
   sugerencia: { id: string; fullName: string } | null;
 }
@@ -265,6 +267,7 @@ export class ServiciosDiaService {
         activo: t.activo,
         ritmoUserId: t.ritmoUserId,
         ritmoConfirmaServicios: t.ritmoConfirmaServicios,
+        ritmoRegistraProductos: t.ritmoRegistraProductos,
         sugerencia:
           !t.ritmoUserId && candidatas.length === 1
             ? { id: candidatas[0].id, fullName: candidatas[0].fullName }
@@ -275,7 +278,11 @@ export class ServiciosDiaService {
 
   async vincular(
     trabajadorId: string,
-    cambios: { ritmoUserId?: string | null; ritmoConfirmaServicios?: boolean },
+    cambios: {
+      ritmoUserId?: string | null;
+      ritmoConfirmaServicios?: boolean;
+      ritmoRegistraProductos?: boolean;
+    },
   ): Promise<VinculoRitmo> {
     const t = await this.trabajadores.findOne({ where: { id: trabajadorId } });
     if (!t)
@@ -297,6 +304,9 @@ export class ServiciosDiaService {
     }
     if (cambios.ritmoConfirmaServicios !== undefined) {
       t.ritmoConfirmaServicios = cambios.ritmoConfirmaServicios;
+    }
+    if (cambios.ritmoRegistraProductos !== undefined) {
+      t.ritmoRegistraProductos = cambios.ritmoRegistraProductos;
     }
     await this.trabajadores.save(t);
     return (await this.vinculos()).find(
