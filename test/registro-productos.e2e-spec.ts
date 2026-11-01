@@ -262,7 +262,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
         canCancel: true,
       });
       expect(rec.statusLabel).toMatch(
-        /^Pendiente · se confirma sola a las \d\d:\d\d$/,
+        /^Se confirma sola a las \d\d:\d\d$/,
       );
       expect(rec.items).toEqual(
         expect.arrayContaining([

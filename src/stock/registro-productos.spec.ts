@@ -120,7 +120,7 @@ describe('registro de productos desde Ritmo', () => {
   it('la etiqueta de pendiente dice a qué hora se confirma sola', () => {
     const creada = new Date('2026-11-01T18:42:00Z'); // 15:42 en el salón
     expect(etiquetaEstado(EstadoSolicitudStock.PENDIENTE, creada, 60)).toBe(
-      'Pendiente · se confirma sola a las 16:42',
+      'Se confirma sola a las 16:42',
     );
     expect(etiquetaEstado(EstadoSolicitudStock.RECHAZADA, creada, 60)).toBe(
       'Anulado',

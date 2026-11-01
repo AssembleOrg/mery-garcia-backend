@@ -158,7 +158,7 @@ export function etiquetaEstado(
 ): string {
   switch (estado) {
     case EstadoSolicitudStock.PENDIENTE:
-      return `Pendiente · se confirma sola a las ${horaSalon(
+      return `Se confirma sola a las ${horaSalon(
         new Date(creada.getTime() + autoconfirmaMin * 60_000),
       )}`;
     case EstadoSolicitudStock.APROBADA:
