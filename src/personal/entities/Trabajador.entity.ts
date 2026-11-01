@@ -1,17 +1,18 @@
-import { RolTrabajador } from "src/enums/RolTrabajador.enum";
-import { 
-  Column, 
-  Entity, 
-  PrimaryGeneratedColumn, 
-  CreateDateColumn, 
-  UpdateDateColumn, 
+import { RolTrabajador } from 'src/enums/RolTrabajador.enum';
+import {
+  Column,
+  Entity,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
   DeleteDateColumn,
   OneToMany,
-  ManyToMany
-} from "typeorm";
-import { TimezoneTransformer } from "../../common/transformers/timezone.transformer";
-import { NumericTransformer } from "../../common/transformers/numeric.transformer";
-import { ItemComanda } from "src/comanda/entities/ItemComanda.entity";
+  ManyToMany,
+  Index,
+} from 'typeorm';
+import { TimezoneTransformer } from '../../common/transformers/timezone.transformer';
+import { NumericTransformer } from '../../common/transformers/numeric.transformer';
+import { ItemComanda } from 'src/comanda/entities/ItemComanda.entity';
 
 @Entity({ name: 'trabajadores' })
 export class Trabajador {
@@ -30,9 +31,9 @@ export class Trabajador {
   rol: RolTrabajador;
 
   @Column({
-    type: 'numeric', 
-    precision: 5, 
-    scale: 2, 
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
     default: 0,
     transformer: {
       to: (v: number) => v,
@@ -46,11 +47,23 @@ export class Trabajador {
    * comisionPorcentaje; el valor del mes se confirma al cierre
    * (ComisionPorcentajeMes). Null = sin rango.
    */
-  @Column({ type: 'numeric', precision: 5, scale: 2, nullable: true, transformer: NumericTransformer })
+  @Column({
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: NumericTransformer,
+  })
   comisionPorcentajeMax: number | null;
 
   /** Porcentaje sobre productos (precio en efectivo) en el esquema por base fija. */
-  @Column({ type: 'numeric', precision: 5, scale: 2, nullable: true, transformer: NumericTransformer })
+  @Column({
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    nullable: true,
+    transformer: NumericTransformer,
+  })
   comisionProductosPorcentaje: number | null;
 
   /**
@@ -63,7 +76,27 @@ export class Trabajador {
   @Column({ length: 20, nullable: true })
   telefono?: string;
 
-  @OneToMany(() => ItemComanda, item => item.trabajador)
+  /**
+   * Id de la persona en Ritmo (presentismo). Con esto Ritmo puede preguntar
+   * "¿qué hizo hoy esta persona?" y se le contesta con las comandas de esta
+   * trabajadora. Null = sin vincular (se intenta por nombre, ver
+   * ServiciosDiaService).
+   */
+  @Index('uq_trabajador_ritmo_user', {
+    unique: true,
+    where: '"ritmoUserId" IS NOT NULL',
+  })
+  @Column({ type: 'uuid', nullable: true })
+  ritmoUserId: string | null;
+
+  /**
+   * Al cerrar el turno en Ritmo tiene que confirmar cuántos servicios hizo.
+   * false = se le muestra pero puede cerrar sin confirmar (Ivonne, por ahora).
+   */
+  @Column({ type: 'boolean', default: true })
+  ritmoConfirmaServicios: boolean;
+
+  @OneToMany(() => ItemComanda, (item) => item.trabajador)
   items: ItemComanda[];
 
   @Column({ default: true })
@@ -75,6 +108,10 @@ export class Trabajador {
   @UpdateDateColumn({ type: 'timestamptz', transformer: TimezoneTransformer })
   updatedAt: Date;
 
-  @DeleteDateColumn({ type: 'timestamptz', nullable: true, transformer: TimezoneTransformer })
+  @DeleteDateColumn({
+    type: 'timestamptz',
+    nullable: true,
+    transformer: TimezoneTransformer,
+  })
   deletedAt?: Date;
 }
