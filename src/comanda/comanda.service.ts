@@ -15,6 +15,7 @@ import {
   Raw,
   IsNull,
   Or,
+  EntityManager,
 } from 'typeorm';
 import { DateTime } from 'luxon';
 import { writeFileSync } from 'fs';
@@ -41,6 +42,7 @@ import { EstadoPrepago } from 'src/enums/EstadoPrepago.enum';
 import { ItemComanda } from './entities/ItemComanda.entity';
 import { Descuento } from './entities/descuento.entity';
 import { ProductoServicio, TipoProductoServicio } from './entities/productoServicio.entity';
+import { comisionSobreSeña, problemaNoAsistio, repartirSeña } from './no-asistio';
 import { Caja } from 'src/enums/Caja.enum';
 import { Egreso } from './entities/egreso.entity';
 import { CrearEgresoDto } from './dto/crear-egreso.dto';
@@ -114,6 +116,31 @@ export class ComandaService {
         crearComandaDto.usuarioConsumePrepagoARS;
       comanda.usuarioConsumePrepagoUSD =
         crearComandaDto.usuarioConsumePrepagoUSD;
+      comanda.noAsistio = crearComandaDto.noAsistio === true;
+      if (comanda.noAsistio) {
+        await this.validarNoAsistio(queryRunner.manager, {
+          esIngreso: crearComandaDto.tipoDeComanda === TipoDeComanda.INGRESO,
+          clienteId: crearComandaDto.clienteId,
+          consumeSeñaARS: !!(crearComandaDto.usuarioConsumePrepagoARS && crearComandaDto.prepagoARSID),
+          consumeSeñaUSD: !!(crearComandaDto.usuarioConsumePrepagoUSD && crearComandaDto.prepagoUSDID),
+          items: (crearComandaDto.items ?? []).map((i) => ({
+            trabajadorId: i.trabajadorId,
+            productoServicioId: i.productoServicioId,
+          })),
+          pagos: [
+            crearComandaDto.precioPesos,
+            crearComandaDto.precioDolar,
+            ...(crearComandaDto.metodosPago ?? []).map((m) => m.monto),
+            ...(crearComandaDto.items ?? []).flatMap((i) => (i.metodosPago ?? []).map((m) => m.monto)),
+          ],
+        });
+        // Solo se consume la seña: no entra plata ni hay descuentos.
+        comanda.precioPesos = 0;
+        comanda.precioDolar = 0;
+        crearComandaDto.metodosPago = [];
+        crearComandaDto.descuentosAplicados = [];
+        crearComandaDto.items = (crearComandaDto.items ?? []).map((i) => ({ ...i, metodosPago: [] }));
+      }
 
       // Persistir los IDs de prepagos si se proporcionan
       if (crearComandaDto.prepagoARSID) {
@@ -289,6 +316,43 @@ export class ComandaService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /** Rechaza la comanda "No se presentó" que no cumple las reglas (ver no-asistio.ts). */
+  private async validarNoAsistio(
+    manager: EntityManager,
+    c: {
+      esIngreso: boolean;
+      clienteId?: string | null;
+      consumeSeñaARS: boolean;
+      consumeSeñaUSD: boolean;
+      items: Array<{ trabajadorId?: string | null; productoServicioId?: string | null }>;
+      pagos: Array<number | string | null | undefined>;
+    },
+  ): Promise<void> {
+    const ids = c.items.map((i) => i.productoServicioId).filter((x): x is string => !!x);
+    const tipos = new Map(
+      ids.length
+        ? (
+            await manager.find(ProductoServicio, {
+              where: { id: In(ids) },
+              select: { id: true, tipo: true },
+            })
+          ).map((p) => [p.id, p.tipo])
+        : [],
+    );
+    const problema = problemaNoAsistio({
+      esIngreso: c.esIngreso,
+      clienteId: c.clienteId,
+      consumeSeñaARS: c.consumeSeñaARS,
+      consumeSeñaUSD: c.consumeSeñaUSD,
+      items: c.items.map((i) => ({
+        trabajadorId: i.trabajadorId,
+        esProducto: !!i.productoServicioId && tipos.get(i.productoServicioId) === TipoProductoServicio.PRODUCTO,
+      })),
+      pagos: c.pagos.map((m) => Number(m ?? 0)),
+    });
+    if (problema) throw new BadRequestException(problema);
   }
 
   async eliminarHard(id: string): Promise<void> {
@@ -639,6 +703,9 @@ export class ComandaService {
       if (actualizarComandaDto.usuarioConsumePrepagoUSD !== undefined) {
         comanda.usuarioConsumePrepagoUSD =
           actualizarComandaDto.usuarioConsumePrepagoUSD;
+      }
+      if (actualizarComandaDto.noAsistio !== undefined) {
+        comanda.noAsistio = actualizarComandaDto.noAsistio === true;
       }
 
       // Actualizar createdAt si se proporciona
@@ -1142,6 +1209,25 @@ export class ComandaService {
         '🔍 Antes de guardar - usuarioConsumePrepagoUSD:',
         comanda.usuarioConsumePrepagoUSD,
       );
+
+      // 7.1. "No se presentó": solo servicio + seña consumida, sin pagos.
+      if (comanda.noAsistio) {
+        await this.validarNoAsistio(queryRunner.manager, {
+          esIngreso: comanda.tipoDeComanda === TipoDeComanda.INGRESO,
+          clienteId: comanda.cliente?.id,
+          consumeSeñaARS: comanda.usuarioConsumePrepagoARS === true && !!comanda.prepagoARSID,
+          consumeSeñaUSD: comanda.usuarioConsumePrepagoUSD === true && !!comanda.prepagoUSDID,
+          items: (comanda.items ?? []).map((i) => ({
+            trabajadorId: i.trabajador?.id,
+            productoServicioId: i.productoServicio?.id,
+          })),
+          pagos: [
+            comanda.precioPesos,
+            comanda.precioDolar,
+            ...(comanda.metodosPago ?? []).map((m) => m.monto),
+          ],
+        });
+      }
 
       // 8. Guardar la comanda actualizada
       const comandaActualizada = await queryRunner.manager.save(
@@ -3197,6 +3283,7 @@ export class ComandaService {
         'items.productoServicio',
         'items.productoServicio.unidadNegocio',
         'items.productoServicio.categoria',
+        'prepagoARS',
         'prepagoUSD',
       ],
     });
@@ -3253,7 +3340,43 @@ export class ComandaService {
         productosUSD: number;
         sinComision: Map<string, number>; // servicio sin base -> cantidad
       };
+      // Clientas que no se presentaron: comisión sobre la seña perdida.
+      noAsistio: Array<{
+        comandaId: string;
+        numero: string;
+        dia: string;
+        servicio: string;
+        moneda: 'ARS' | 'USD';
+        seña: number;
+        porcentaje: number;
+        porcentajeMax: number;
+        confirmado: boolean;
+        comision: number;
+        comisionMax: number;
+      }>;
     }>();
+    const asegurarTrabajador = (trabajadorId: string, nombre: string) => {
+      if (!totalesPorTrabajador.has(trabajadorId)) {
+        totalesPorTrabajador.set(trabajadorId, {
+          trabajadorId,
+          nombre,
+          serviciosARS: 0,
+          serviciosUSD: 0,
+          productosARS: 0,
+          productosUSD: 0,
+          cantidadConsultas: 0,
+          totalConsultas: 0,
+          unidadesNegocio: new Map(),
+          productosServicios: new Map(),
+          categorias: new Map(),
+          serviciosSinCategoria: 0,
+          historico: { serviciosARS: 0, serviciosUSD: 0, productosARS: 0, productosUSD: 0 },
+          base: { servicios: new Map(), productosARS: 0, productosUSD: 0, sinComision: new Map() },
+          noAsistio: [],
+        });
+      }
+      return totalesPorTrabajador.get(trabajadorId)!;
+    };
 
     // Totales generales por moneda
     let totalServiciosARS = 0;
@@ -3321,6 +3444,49 @@ export class ComandaService {
       const dia = diaComanda.toISODate() ?? '';
       const mes = dia.slice(0, 7);
 
+      // No se presentó: no cuenta como servicio hecho. La seña perdida se
+      // reparte entre sus servicios y cada uno comisiona sobre su parte, con
+      // el % que le toca (esquema del mes o 30% histórico).
+      if (comanda.noAsistio) {
+        const servicios = (comanda.items ?? [])
+          .filter((item) => item.trabajador && item.productoServicio?.tipo === TipoProductoServicio.SERVICIO)
+          .map((item) => ({
+            trabajadorId: item.trabajador.id,
+            nombre: item.trabajador.nombre,
+            servicio: item.productoServicio!.nombre,
+            subtotal: subtotalItem(item),
+          }));
+        const seña = {
+          ARS: comanda.usuarioConsumePrepagoARS ? Number(comanda.prepagoARS?.monto ?? 0) : 0,
+          USD: comanda.usuarioConsumePrepagoUSD ? Number(comanda.prepagoUSD?.monto ?? 0) : 0,
+        };
+        for (const parte of repartirSeña(seña, servicios)) {
+          const t = asegurarTrabajador(
+            parte.trabajadorId,
+            servicios.find((x) => x.trabajadorId === parte.trabajadorId)!.nombre,
+          );
+          const esquema = esquemas.get(parte.trabajadorId);
+          const pct =
+            esquema && dia >= esquema.desde
+              ? porcentajeDelMes(esquema, mes)
+              : { aplicado: 30, maximo: 30, confirmado: true };
+          t.noAsistio.push({
+            comandaId: comanda.id,
+            numero: comanda.numero,
+            dia,
+            servicio: parte.servicio,
+            moneda: parte.moneda,
+            seña: parte.seña,
+            porcentaje: pct.aplicado,
+            porcentajeMax: pct.maximo,
+            confirmado: pct.confirmado,
+            comision: comisionSobreSeña(parte.seña, pct.aplicado),
+            comisionMax: comisionSobreSeña(parte.seña, pct.maximo),
+          });
+        }
+        return;
+      }
+
       comanda.items?.forEach((item) => {
         if (!item.trabajador || !item.productoServicio) {
           return; // Skip items sin trabajador o producto/servicio
@@ -3343,26 +3509,7 @@ export class ComandaService {
         const cantidad = Number(item.cantidad ?? 1);
 
         // Inicializar o actualizar totales del trabajador
-        if (!totalesPorTrabajador.has(trabajadorId)) {
-          totalesPorTrabajador.set(trabajadorId, {
-            trabajadorId,
-            nombre,
-            serviciosARS: 0,
-            serviciosUSD: 0,
-            productosARS: 0,
-            productosUSD: 0,
-            cantidadConsultas: 0,
-            totalConsultas: 0,
-            unidadesNegocio: new Map(),
-            productosServicios: new Map(),
-            categorias: new Map(),
-            serviciosSinCategoria: 0,
-            historico: { serviciosARS: 0, serviciosUSD: 0, productosARS: 0, productosUSD: 0 },
-            base: { servicios: new Map(), productosARS: 0, productosUSD: 0, sinComision: new Map() },
-          });
-        }
-
-        const trabajadorData = totalesPorTrabajador.get(trabajadorId)!;
+        const trabajadorData = asegurarTrabajador(trabajadorId, nombre);
 
         // Contabilizar unidad de negocio
         if (unidadNegocio) {
@@ -3507,8 +3654,13 @@ export class ComandaService {
       const comBaseProductosARS = trabajadorData.base.productosARS * pctProductos;
       const comBaseProductosUSD = trabajadorData.base.productosUSD * pctProductos;
 
-      const comServiciosARS = h.serviciosARS * 0.30 + comBaseServicios;
-      const comServiciosUSD = h.serviciosUSD * 0.30;
+      const na = trabajadorData.noAsistio;
+      const sumaNA = (moneda: 'ARS' | 'USD', campo: 'seña' | 'comision' | 'comisionMax') =>
+        redondear(na.filter((x) => x.moneda === moneda).reduce((a, x) => a + x[campo], 0));
+      const comNoAsistioARS = sumaNA('ARS', 'comision');
+      const comNoAsistioUSD = sumaNA('USD', 'comision');
+      const comServiciosARS = h.serviciosARS * 0.30 + comBaseServicios + comNoAsistioARS;
+      const comServiciosUSD = h.serviciosUSD * 0.30 + comNoAsistioUSD;
       const comProductosARS = h.productosARS * 0.10 + comBaseProductosARS;
       const comProductosUSD = h.productosUSD * 0.10 + comBaseProductosUSD;
 
@@ -3551,6 +3703,17 @@ export class ComandaService {
           totalARS: Number((comServiciosARS + comProductosARS).toFixed(2)),
           totalUSD: Number((comServiciosUSD + comProductosUSD).toFixed(2)),
         },
+        // Clientas que no se presentaron (null si no hubo): comisión sobre la seña.
+        noAsistio: na.length
+          ? {
+              cantidad: new Set(na.map((x) => x.comandaId)).size,
+              señaARS: sumaNA('ARS', 'seña'),
+              señaUSD: sumaNA('USD', 'seña'),
+              comisionARS: comNoAsistioARS,
+              comisionUSD: comNoAsistioUSD,
+              detalle: [...na].sort((a, b) => a.dia.localeCompare(b.dia) || a.numero.localeCompare(b.numero)),
+            }
+          : null,
         // Detalle del esquema por base fija (null si la trabajadora no lo usa).
         // Mientras el porcentaje de un mes no está confirmado, "comisiones" usa
         // el mínimo del rango y "totalARSAlMaximo" el tope.
@@ -3566,8 +3729,10 @@ export class ComandaService {
               comisionServiciosARS: redondear(comBaseServicios),
               comisionProductosARS: redondear(comBaseProductosARS),
               comisionProductosUSD: redondear(comBaseProductosUSD),
-              porcentajePendiente: serviciosBase.some((s) => !s.confirmado),
-              totalARSAlMaximo: redondear(comServiciosARS + comProductosARS + (comBaseServiciosMax - comBaseServicios)),
+              porcentajePendiente: serviciosBase.some((s) => !s.confirmado) || na.some((x) => !x.confirmado),
+              totalARSAlMaximo: redondear(
+                comServiciosARS + comProductosARS + (comBaseServiciosMax - comBaseServicios) + (sumaNA('ARS', 'comisionMax') - comNoAsistioARS),
+              ),
               serviciosSinComision: [...trabajadorData.base.sinComision.entries()].map(([nombre, cantidad]) => ({ nombre, cantidad })),
             }
           : null,

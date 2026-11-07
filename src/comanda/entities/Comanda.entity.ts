@@ -200,4 +200,11 @@ export class Comanda {
 
   @Column({ type: 'text', nullable: true })
   observaciones?: string;
+
+  /**
+   * La clienta no se presentó: se pierde la seña. La comanda solo lleva el
+   * servicio y la seña consumida (sin pagos); la comisión va sobre la seña.
+   */
+  @Column({ type: 'boolean', default: false })
+  noAsistio: boolean;
 }

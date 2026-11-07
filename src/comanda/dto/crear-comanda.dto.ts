@@ -129,6 +129,16 @@ export class CrearComandaDto {
   usuarioConsumePrepagoUSD: boolean;
 
   @ApiProperty({
+    description:
+      'La clienta no se presentó: se consume la seña, no lleva pagos ni productos y la comisión va sobre la seña',
+    required: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  noAsistio?: boolean;
+
+  @ApiProperty({
     description: 'Descuentos aplicados',
     example: [{
       id: '123e4567-e89b-12d3-a456-426614174000',
