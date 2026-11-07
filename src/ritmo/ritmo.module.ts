@@ -23,10 +23,12 @@ import { ResumenRitmoController } from './servicios/resumen-ritmo.controller';
 import { ConfirmacionServiciosDia } from './servicios/entities/ConfirmacionServiciosDia.entity';
 import { Trabajador } from 'src/personal/entities/Trabajador.entity';
 import { CategoriaServicio } from 'src/comanda/entities/categoriaServicio.entity';
+import { ComandaModule } from 'src/comanda/comanda.module';
 
 @Module({
   imports: [
     ConfigModule,
+    ComandaModule,
     TypeOrmModule.forFeature([
       RitmoWebhookEvento,
       PatronTurno,

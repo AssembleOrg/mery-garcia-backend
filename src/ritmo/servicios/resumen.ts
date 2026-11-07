@@ -9,6 +9,8 @@
  * mismo. Lo que no está validado se dice aparte ("2 validadas").
  */
 
+import type { GananciaDia, SeccionDia } from './resumen-detalle';
+
 export interface FilaServiciosDia {
   categoriaId: string | null;
   cantidad: number;
@@ -39,6 +41,10 @@ export interface ResumenParaRitmo {
   items: { key: string; label: string; count: number; detail: string }[];
   total: number;
   note: string | null;
+  /** La comisión del día en plata (null = no se muestra). */
+  earnings: GananciaDia | null;
+  /** Qué hizo, uno por uno: servicios, clientas que no vinieron, productos. */
+  sections: SeccionDia[];
   confirmation: {
     required: boolean;
     confirmedAt: string | null;
@@ -144,6 +150,8 @@ export function armarResumen(input: {
   comandas: number;
   confirmacionObligatoria: boolean;
   confirmacion: ConfirmacionVista | null;
+  earnings?: GananciaDia | null;
+  sections?: SeccionDia[];
 }): ResumenParaRitmo {
   const total = input.lineas.reduce((s, l) => s + l.count, 0);
   const sinValidar = input.lineas.reduce(
@@ -168,6 +176,8 @@ export function armarResumen(input: {
       detail,
     })),
     total,
+    earnings: input.earnings ?? null,
+    sections: input.sections ?? [],
     note:
       total === 0
         ? null

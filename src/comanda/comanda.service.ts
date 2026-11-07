@@ -43,6 +43,7 @@ import { ItemComanda } from './entities/ItemComanda.entity';
 import { Descuento } from './entities/descuento.entity';
 import { ProductoServicio, TipoProductoServicio } from './entities/productoServicio.entity';
 import { comisionSobreSeña, problemaNoAsistio, repartirSeña } from './no-asistio';
+import { lineaComision, LineaComision } from './comisiones/detalle';
 import { Caja } from 'src/enums/Caja.enum';
 import { Egreso } from './entities/egreso.entity';
 import { CrearEgresoDto } from './dto/crear-egreso.dto';
@@ -3285,6 +3286,7 @@ export class ComandaService {
         'items.productoServicio.categoria',
         'prepagoARS',
         'prepagoUSD',
+        'cliente',
       ],
     });
 
@@ -3341,6 +3343,7 @@ export class ComandaService {
         sinComision: Map<string, number>; // servicio sin base -> cantidad
       };
       // Clientas que no se presentaron: comisión sobre la seña perdida.
+      detalle: LineaComision[];
       noAsistio: Array<{
         comandaId: string;
         numero: string;
@@ -3372,6 +3375,7 @@ export class ComandaService {
           serviciosSinCategoria: 0,
           historico: { serviciosARS: 0, serviciosUSD: 0, productosARS: 0, productosUSD: 0 },
           base: { servicios: new Map(), productosARS: 0, productosUSD: 0, sinComision: new Map() },
+          detalle: [],
           noAsistio: [],
         });
       }
@@ -3443,6 +3447,14 @@ export class ComandaService {
       const diaComanda = DateTime.fromJSDate(new Date(comanda.createdAt)).setZone(tz);
       const dia = diaComanda.toISODate() ?? '';
       const mes = dia.slice(0, 7);
+      const deLaComanda = {
+        comandaId: comanda.id,
+        numero: comanda.numero,
+        dia,
+        hora: diaComanda.toFormat('HH:mm'),
+        cliente: comanda.cliente?.nombre ?? null,
+        validada: comanda.estadoDeComanda === EstadoDeComanda.VALIDADO,
+      };
 
       // No se presentó: no cuenta como servicio hecho. La seña perdida se
       // reparte entre sus servicios y cada uno comisiona sobre su parte, con
@@ -3483,6 +3495,24 @@ export class ComandaService {
             comision: comisionSobreSeña(parte.seña, pct.aplicado),
             comisionMax: comisionSobreSeña(parte.seña, pct.maximo),
           });
+          if (filtros.detalle) {
+            t.detalle.push(
+              lineaComision({
+                ...deLaComanda,
+                tipo: 'NO_ASISTIO',
+                item: parte.servicio,
+                categoria: null,
+                cantidad: 1,
+                moneda: parte.moneda,
+                base: parte.seña,
+                porcentaje: pct.aplicado,
+                porcentajeMax: pct.maximo,
+                confirmado: pct.confirmado,
+                esquemaBase: !!esquema && dia >= esquema.desde,
+                nota: null,
+              }),
+            );
+          }
         }
         return;
       }
@@ -3551,6 +3581,34 @@ export class ComandaService {
         const enEsquemaBase = !!esquema && dia >= esquema.desde;
         const categoriaItem = item.productoServicio.categoria;
         const montoBase = enEsquemaBase && categoriaItem ? esquema!.bases.get(categoriaItem.id) : undefined;
+        const anotar = (l: {
+          tipo: 'SERVICIO' | 'PRODUCTO';
+          moneda: 'ARS' | 'USD';
+          base: number;
+          porcentaje: number;
+          porcentajeMax?: number;
+          confirmado?: boolean;
+          esquemaBase: boolean;
+          nota?: string | null;
+        }) => {
+          if (!filtros.detalle) return;
+          trabajadorData.detalle.push(
+            lineaComision({
+              ...deLaComanda,
+              item: nombreProductoServicio,
+              categoria: categoriaItem?.nombre ?? null,
+              cantidad,
+              porcentajeMax: l.porcentajeMax ?? l.porcentaje,
+              confirmado: l.confirmado ?? true,
+              nota: l.nota ?? null,
+              tipo: l.tipo,
+              moneda: l.moneda,
+              base: l.base,
+              porcentaje: l.porcentaje,
+              esquemaBase: l.esquemaBase,
+            }),
+          );
+        };
 
         // Esquema por base fija: el servicio comisiona sobre el monto base de
         // su categoría, no sobre lo cobrado (también para ítems tipo producto
@@ -3570,15 +3628,28 @@ export class ComandaService {
           };
           s.cantidad += cantidad;
           trabajadorData.base.servicios.set(clave, s);
+          anotar({
+            tipo: tipo === TipoProductoServicio.PRODUCTO ? 'PRODUCTO' : 'SERVICIO',
+            moneda: 'ARS',
+            base: cantidad * montoBase,
+            porcentaje: pct.aplicado,
+            porcentajeMax: pct.maximo,
+            confirmado: pct.confirmado,
+            esquemaBase: true,
+          });
         } else if (enEsquemaBase && tipo === TipoProductoServicio.SERVICIO) {
           trabajadorData.base.sinComision.set(
             nombreProductoServicio,
             (trabajadorData.base.sinComision.get(nombreProductoServicio) ?? 0) + cantidad,
           );
+          anotar({ tipo: 'SERVICIO', moneda: 'ARS', base: 0, porcentaje: 0, esquemaBase: true, nota: 'sin base cargada' });
         }
 
         // Si es Rosario con consultas, solo contar las consultas
         if (esRosarioConConsulta) {
+          if (!enEsquemaBase) {
+            anotar({ tipo: 'SERVICIO', moneda: 'ARS', base: 0, porcentaje: 0, esquemaBase: false, nota: 'consulta' });
+          }
           trabajadorData.cantidadConsultas += cantidad;
           trabajadorData.totalConsultas = trabajadorData.cantidadConsultas * 10;
           // No sumar a los totales generales ni al trabajador
@@ -3600,6 +3671,9 @@ export class ComandaService {
             totalServiciosARS += subtotal;
             if (!enEsquemaBase) trabajadorData.historico.serviciosARS += subtotal;
           }
+          if (!enEsquemaBase) {
+            anotar({ tipo: 'SERVICIO', moneda: esServicioUSD(item) ? 'USD' : 'ARS', base: subtotal, porcentaje: 30, esquemaBase: false });
+          }
         } else if (tipo === TipoProductoServicio.PRODUCTO) {
           // En el esquema por base fija el producto comisiona sobre el precio en
           // efectivo: si se vendió la variante "precio lista", se ajusta con su
@@ -3611,6 +3685,9 @@ export class ComandaService {
             totalProductosARS += subtotal;
             if (!enEsquemaBase) trabajadorData.historico.productosARS += subtotal;
             else trabajadorData.base.productosARS += subtotal * factor;
+            if (!enEsquemaBase) anotar({ tipo: 'PRODUCTO', moneda: 'ARS', base: subtotal, porcentaje: 10, esquemaBase: false });
+            else if (factor > 0)
+              anotar({ tipo: 'PRODUCTO', moneda: 'ARS', base: subtotal * factor, porcentaje: esquema!.productosPorcentaje ?? 0, esquemaBase: true });
           } else {
             // Lista en USD: va en dólares solo la parte que se cobró en
             // dólares; el resto se cobró en pesos al valorDolar.
@@ -3624,9 +3701,14 @@ export class ComandaService {
             if (!enEsquemaBase) {
               trabajadorData.historico.productosUSD += enUSD;
               trabajadorData.historico.productosARS += enARS;
+              if (enUSD > 0) anotar({ tipo: 'PRODUCTO', moneda: 'USD', base: enUSD, porcentaje: 10, esquemaBase: false });
+              if (enARS > 0) anotar({ tipo: 'PRODUCTO', moneda: 'ARS', base: enARS, porcentaje: 10, esquemaBase: false });
             } else {
               trabajadorData.base.productosUSD += enUSD * factor;
               trabajadorData.base.productosARS += enARS * factor;
+              const pctP = esquema!.productosPorcentaje ?? 0;
+              if (factor > 0 && enUSD > 0) anotar({ tipo: 'PRODUCTO', moneda: 'USD', base: enUSD * factor, porcentaje: pctP, esquemaBase: true });
+              if (factor > 0 && enARS > 0) anotar({ tipo: 'PRODUCTO', moneda: 'ARS', base: enARS * factor, porcentaje: pctP, esquemaBase: true });
             }
           }
         }
@@ -3703,6 +3785,14 @@ export class ComandaService {
           totalARS: Number((comServiciosARS + comProductosARS).toFixed(2)),
           totalUSD: Number((comServiciosUSD + comProductosUSD).toFixed(2)),
         },
+        // Renglón por renglón (solo si se pidió con detalle: true).
+        ...(filtros.detalle
+          ? {
+              detalle: [...trabajadorData.detalle].sort(
+                (a, b) => a.dia.localeCompare(b.dia) || a.hora.localeCompare(b.hora) || a.numero.localeCompare(b.numero),
+              ),
+            }
+          : {}),
         // Clientas que no se presentaron (null si no hubo): comisión sobre la seña.
         noAsistio: na.length
           ? {

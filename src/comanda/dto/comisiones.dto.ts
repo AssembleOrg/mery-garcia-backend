@@ -47,6 +47,9 @@ export class FiltrarComisionesDto {
   @IsOptional()
   @Type(() => Number)
   dolar?: number;
+
+  /** Uso interno (resumen de Ritmo): trae el detalle renglón por renglón. */
+  detalle?: boolean;
 }
 
 export class ComisionPorTipoDto {

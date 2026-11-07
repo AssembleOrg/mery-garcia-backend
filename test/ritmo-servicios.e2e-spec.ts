@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument -- los cuerpos de supertest son `any`; acá se mira la respuesta tal cual llega */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return -- los cuerpos de supertest son `any`; acá se mira la respuesta tal cual llega */
 /**
  * Arranque real del módulo de Ritmo contra una base Postgres descartable:
  * synchronize crea las columnas y la tabla nuevas, y se prueban los
@@ -43,6 +43,7 @@ import {
 import { ItemComanda } from 'src/comanda/entities/ItemComanda.entity';
 import { ConfirmacionServiciosDia } from 'src/ritmo/servicios/entities/ConfirmacionServiciosDia.entity';
 import { hoyEnEmpresa, sumarDias } from 'src/ritmo/turnos/fechas';
+import { ComisionesConfigService } from 'src/comanda/services/comisiones-config.service';
 
 const URL = process.env.MERY_TEST_POSTGRES_URL;
 const SECRET = 'rs_prueba_secreto';
@@ -513,6 +514,67 @@ if (!URL || !URL.includes('mery_boot_test')) {
       });
       expect(sinNada.body.data.confirmation.required).toBe(false);
       expect(ivonne.id).toBeTruthy();
+    });
+
+    it('listado de servicios uno por uno; la plata solo con esquema por base fija', async () => {
+      // Sin esquema (cálculo histórico): listado sin montos ni "earnings".
+      const antes = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
+      expect(antes.earnings).toBeNull();
+      const servicios = antes.sections.find((x: any) => x.key === 'servicios');
+      expect(servicios.lines.map((l: any) => l.label).sort()).toEqual(
+        [
+          'Laminado',
+          'Laminado ×2',
+          'Servicio sin categoría',
+          'Tinte de cejas',
+        ].sort(),
+      );
+      expect(servicios.lines.every((l: any) => l.amount === null)).toBe(true);
+      const tinte = servicios.lines.find(
+        (l: any) => l.label === 'Tinte de cejas',
+      );
+      expect(tinte).toMatchObject({
+        detail: 'Categoría B · 15:00',
+        badge: 'sin validar',
+      });
+      expect(
+        antes.sections.find((x: any) => x.key === 'productos').lines[0].label,
+      ).toBe('Crema');
+
+      // Con esquema: 30–35% (sin confirmar), A $40.000, B $30.000, productos 5%.
+      const cats = await ds.getRepository(CategoriaServicio).find();
+      const id = (n: string) => cats.find((c) => c.nombre === n)!.id;
+      await app
+        .get(ComisionesConfigService, { strict: false })
+        .actualizarEsquema(luna.id, {
+          porcentajeMin: 30,
+          porcentajeMax: 35,
+          productosPorcentaje: 5,
+          baseDesde: sumarDias(hoy, -10),
+          bases: [
+            { categoriaId: id('Categoría A'), montoBase: 40000 },
+            { categoriaId: id('Categoría B'), montoBase: 30000 },
+          ],
+        } as never);
+      const d = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
+      // 3 laminados × 40.000 × 30% + tinte 30.000 × 30% + crema 5.000 × 5%.
+      expect(d.earnings.amounts).toEqual([{ currency: 'ARS', value: 45250 }]);
+      expect(d.earnings.detail).toBe(
+        'Calculada al 30%: el % del mes se confirma al cierre. Al máximo serían $ 52.750.',
+      );
+      const s2 = d.sections.find((x: any) => x.key === 'servicios').lines;
+      expect(s2.find((l: any) => l.label === 'Laminado ×2')).toMatchObject({
+        amount: { currency: 'ARS', value: 24000 },
+        amountDetail: '$ 80.000 × 30%',
+      });
+      expect(
+        s2.find((l: any) => l.label === 'Servicio sin categoría'),
+      ).toMatchObject({
+        amount: null,
+        amountDetail: 'sin base cargada',
+      });
+      // El resumen por categoría sigue viniendo igual.
+      expect(d.items.find((i: any) => i.label === 'Categoría A').count).toBe(3);
     });
   });
 }
