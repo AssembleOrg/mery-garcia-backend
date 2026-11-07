@@ -516,34 +516,33 @@ if (!URL || !URL.includes('mery_boot_test')) {
       expect(ivonne.id).toBeTruthy();
     });
 
-    it('listado de servicios uno por uno; la plata solo con esquema por base fija', async () => {
-      // Sin esquema (cálculo histórico): listado sin montos ni "earnings".
-      const antes = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
-      expect(antes.earnings).toBeNull();
-      const servicios = antes.sections.find((x: any) => x.key === 'servicios');
-      expect(servicios.lines.map((l: any) => l.label).sort()).toEqual(
+    it('listado sin plata: servicio, categoría, cantidad y comandas', async () => {
+      const d = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
+      expect(d.earnings).toBeNull();
+      expect(d.sections.map((x: any) => x.key)).toEqual(['servicios']);
+      const lineas = d.sections[0].lines.map((l: any) => [
+        l.label,
+        l.detail,
+        l.badge,
+        l.amount,
+      ]);
+      expect(lineas).toEqual([
         [
-          'Laminado',
-          'Laminado ×2',
-          'Servicio sin categoría',
+          'Laminado ×3',
+          'Categoría A · Comandas 01-0001 · 01-0002',
+          '1 sin validar',
+          null,
+        ],
+        [
           'Tinte de cejas',
-        ].sort(),
-      );
-      expect(servicios.lines.every((l: any) => l.amount === null)).toBe(true);
-      const tinte = servicios.lines.find(
-        (l: any) => l.label === 'Tinte de cejas',
-      );
-      expect(tinte).toMatchObject({
-        detail: 'Categoría B · 15:00',
-        badge: 'sin validar',
-      });
-      expect(
-        antes.sections.find((x: any) => x.key === 'productos').lines[0].label,
-      ).toBe('Crema');
-
-      // Con esquema: 30–35% (sin confirmar), A $40.000, B $30.000, productos 5%.
+          'Categoría B · Comanda 01-0001',
+          'sin validar',
+          null,
+        ],
+        ['Servicio sin categoría', 'Comanda 01-0002', null, null],
+      ]);
+      // Aunque tenga esquema por base fija, no se muestra plata.
       const cats = await ds.getRepository(CategoriaServicio).find();
-      const id = (n: string) => cats.find((c) => c.nombre === n)!.id;
       await app
         .get(ComisionesConfigService, { strict: false })
         .actualizarEsquema(luna.id, {
@@ -552,29 +551,22 @@ if (!URL || !URL.includes('mery_boot_test')) {
           productosPorcentaje: 5,
           baseDesde: sumarDias(hoy, -10),
           bases: [
-            { categoriaId: id('Categoría A'), montoBase: 40000 },
-            { categoriaId: id('Categoría B'), montoBase: 30000 },
+            {
+              categoriaId: cats.find((c) => c.nombre === 'Categoría A')!.id,
+              montoBase: 40000,
+            },
           ],
         } as never);
-      const d = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
-      // 3 laminados × 40.000 × 30% + tinte 30.000 × 30% + crema 5.000 × 5%.
-      expect(d.earnings.amounts).toEqual([{ currency: 'ARS', value: 45250 }]);
-      expect(d.earnings.detail).toBe(
-        'Calculada al 30%: el % del mes se confirma al cierre. Al máximo serían $ 52.750.',
-      );
-      const s2 = d.sections.find((x: any) => x.key === 'servicios').lines;
-      expect(s2.find((l: any) => l.label === 'Laminado ×2')).toMatchObject({
-        amount: { currency: 'ARS', value: 24000 },
-        amountDetail: '$ 80.000 × 30%',
-      });
+      const d2 = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
+      expect(d2.earnings).toBeNull();
       expect(
-        s2.find((l: any) => l.label === 'Servicio sin categoría'),
-      ).toMatchObject({
-        amount: null,
-        amountDetail: 'sin base cargada',
-      });
-      // El resumen por categoría sigue viniendo igual.
-      expect(d.items.find((i: any) => i.label === 'Categoría A').count).toBe(3);
+        d2.sections[0].lines.every(
+          (l: any) => l.amount === null && l.amountDetail === null,
+        ),
+      ).toBe(true);
+      expect(d2.items.find((i: any) => i.label === 'Categoría A').count).toBe(
+        3,
+      );
     });
   });
 }

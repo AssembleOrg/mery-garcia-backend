@@ -1,5 +1,10 @@
 import { lineaComision, LineaComision } from 'src/comanda/comisiones/detalle';
-import { armarGanancia, armarSecciones } from './resumen-detalle';
+import {
+  armarGanancia,
+  armarListado,
+  armarSecciones,
+  detalleComandas,
+} from './resumen-detalle';
 
 const base = {
   comandaId: 'c1',
@@ -151,6 +156,105 @@ describe('armarGanancia', () => {
     ]);
     expect(g.detail).toBe(
       'Al 32%. Incluye lo que todavía no está validado en caja.',
+    );
+  });
+});
+
+describe('armarListado (sin plata)', () => {
+  const lista = [
+    l({
+      tipo: 'SERVICIO',
+      item: 'Modelado de Cejas',
+      hora: '11:46',
+      base: 40000,
+      porcentaje: 25,
+      numero: '01-11305',
+    }),
+    l({
+      tipo: 'SERVICIO',
+      item: 'Modelado de Cejas',
+      hora: '10:00',
+      base: 80000,
+      porcentaje: 25,
+      numero: '01-11302',
+      cantidad: 2,
+      validada: false,
+    }),
+    l({
+      tipo: 'SERVICIO',
+      item: 'Tinte de cejas',
+      hora: '12:00',
+      base: 30000,
+      porcentaje: 25,
+      numero: '01-11310',
+      categoria: 'Categoría B',
+    }),
+    l({
+      tipo: 'SERVICIO',
+      item: 'Consulta',
+      hora: '13:00',
+      base: 0,
+      porcentaje: 0,
+      numero: '01-11311',
+      categoria: null,
+      nota: 'sin base cargada',
+    }),
+    l({
+      tipo: 'NO_ASISTIO',
+      item: 'Lifting',
+      hora: '17:00',
+      base: 200000,
+      porcentaje: 25,
+      numero: '01-11320',
+    }),
+    l({
+      tipo: 'PRODUCTO',
+      item: 'Crema',
+      hora: '10:00',
+      base: 5000,
+      porcentaje: 5,
+      numero: '01-11302',
+      categoria: null,
+    }),
+  ];
+
+  it('un renglón por servicio: cantidad, categoría y comandas; sin montos ni productos', () => {
+    const s = armarListado(lista);
+    expect(s.map((x) => x.key)).toEqual(['servicios', 'no-asistio']);
+    expect(
+      s[0].lines.map((x) => [
+        x.label,
+        x.detail,
+        x.badge,
+        x.amount,
+        x.amountDetail,
+      ]),
+    ).toEqual([
+      [
+        'Modelado de Cejas ×3',
+        'Categoría A · Comandas 01-11302 · 01-11305',
+        '1 sin validar',
+        null,
+        null,
+      ],
+      ['Tinte de cejas', 'Categoría B · Comanda 01-11310', null, null, null],
+      ['Consulta', 'Comanda 01-11311', null, null, null],
+    ]);
+    expect(s[1].lines[0]).toMatchObject({
+      label: 'Lifting',
+      detail: 'Categoría A · Comanda 01-11320',
+      badge: 'No se presentó',
+      tone: 'warning',
+      amount: null,
+    });
+  });
+
+  it('muchas comandas: se recorta para entrar en 140 caracteres', () => {
+    const numeros = Array.from({ length: 20 }, (_, i) => `01-${11300 + i}`);
+    const d = detalleComandas('Categoría A', numeros);
+    expect(d.length).toBeLessThanOrEqual(140);
+    expect(d).toMatch(
+      /^Categoría A · Comandas 01-11300 · 01-11301 .* \(\+\d+ más\)$/,
     );
   });
 });

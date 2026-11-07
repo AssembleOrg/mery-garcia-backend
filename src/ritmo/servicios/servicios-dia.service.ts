@@ -11,7 +11,7 @@ import { CategoriaServicio } from 'src/comanda/entities/categoriaServicio.entity
 import { RitmoService } from '../ritmo.service';
 import { ComandaService } from 'src/comanda/comanda.service';
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
-import { armarGanancia, armarSecciones } from './resumen-detalle';
+import { armarListado } from './resumen-detalle';
 import type { GananciaDia, SeccionDia } from './resumen-detalle';
 import { TZ_EMPRESA, hoyEnEmpresa } from '../turnos/fechas';
 import { ConfirmacionServiciosDia } from './entities/ConfirmacionServiciosDia.entity';
@@ -328,9 +328,10 @@ export class ServiciosDiaService {
   // ===================== Internas =====================
 
   /**
-   * Comisión del día y listado, del mismo cálculo que la pantalla de
-   * Comisiones. Si falla, el resumen sale igual sin esto (Ritmo espera 8 s y
-   * nunca debe trabar un cierre de turno).
+   * Listado del día (qué servicio, categoría, cuántos y en qué comandas),
+   * del mismo cálculo que la pantalla de Comisiones. Por ahora sin plata:
+   * `earnings` va siempre null. Si falla, el resumen sale igual sin esto
+   * (Ritmo espera 8 s y nunca debe trabar un cierre de turno).
    */
   private async plataYListado(
     trabajadorId: string,
@@ -344,36 +345,14 @@ export class ServiciosDiaService {
       })) as unknown as {
         trabajadores: Array<{
           trabajadorId: string;
-          comisiones: { totalARS: number; totalUSD: number };
-          esquemaBase: {
-            desde: string;
-            porcentajePendiente: boolean;
-            totalARSAlMaximo: number;
-          } | null;
           detalle?: LineaComision[];
         }>;
       };
       const fila = r.trabajadores.find((t) => t.trabajadorId === trabajadorId);
-      if (!fila) return { earnings: null, sections: [] };
-      const detalle = fila.detalle ?? [];
-      // La plata solo con el esquema por base fija vigente ese día.
-      const conPlata = !!fila.esquemaBase && dia >= fila.esquemaBase.desde;
-      return {
-        earnings: conPlata
-          ? armarGanancia({
-              totalARS: fila.comisiones.totalARS,
-              totalUSD: fila.comisiones.totalUSD,
-              totalARSAlMaximo: fila.esquemaBase?.totalARSAlMaximo ?? null,
-              porcentajePendiente:
-                fila.esquemaBase?.porcentajePendiente ?? false,
-              detalle,
-            })
-          : null,
-        sections: armarSecciones(detalle, conPlata),
-      };
+      return { earnings: null, sections: armarListado(fila?.detalle ?? []) };
     } catch (e) {
       this.logger.warn(
-        `Resumen de Ritmo sin comisión (${dia}): ${(e as Error).message}`,
+        `Resumen de Ritmo sin listado (${dia}): ${(e as Error).message}`,
       );
       return { earnings: null, sections: [] };
     }

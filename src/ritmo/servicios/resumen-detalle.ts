@@ -3,8 +3,10 @@
  * se ganó ese día. Sale del cálculo de comisiones (el mismo de la pantalla de
  * Comisiones), así los números coinciden.
  *
- * La plata solo se muestra a quien tiene el esquema por base fija: con el
- * cálculo histórico (30% del precio) el número no es lo que cobra de verdad.
+ * Por ahora Ritmo no muestra plata (pedido de Charly 07/11): va
+ * `armarListado` (qué servicio, de qué categoría, cuántos y en qué
+ * comandas). `armarSecciones`/`armarGanancia` quedan para cuando se vuelva a
+ * mostrar: la plata solo con esquema por base fija.
  */
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
 
@@ -133,4 +135,97 @@ export function armarGanancia(c: ComisionDelDia): GananciaDia {
     detail = `Al ${porcentajes.map(pct).join(' / ')}. Incluye lo que todavía no está validado en caja.`;
   }
   return { label: 'Tu comisión del día', amounts, detail };
+}
+
+/** Tope de Ritmo para `detail` (140): si hay muchas comandas, "+3 más". */
+const MAX_DETALLE = 140;
+
+/** "Categoría A · Comandas 01-11302 · 01-11305", recortado si no entra. */
+export function detalleComandas(
+  categoria: string | null,
+  numeros: string[],
+): string {
+  const prefijo = [categoria, numeros.length === 1 ? 'Comanda' : 'Comandas']
+    .filter(Boolean)
+    .join(' · ');
+  for (let n = numeros.length; n >= 1; n--) {
+    const resto = numeros.length - n;
+    const texto = `${prefijo} ${numeros.slice(0, n).join(' · ')}${resto ? ` (+${resto} más)` : ''}`;
+    if (texto.length <= MAX_DETALLE) return texto;
+  }
+  return `${prefijo} ${numeros.length}`.slice(0, MAX_DETALLE);
+}
+
+const ordenComanda = (a: string, b: string) =>
+  a.localeCompare(b, 'es', { numeric: true });
+
+/**
+ * Listado sin plata: un renglón por servicio (con cuántos hizo), su
+ * categoría y en qué comandas está. Las clientas que no se presentaron van
+ * aparte. Los productos no van (no son servicios).
+ */
+export function armarListado(detalle: LineaComision[]): SeccionDia[] {
+  const agrupar = (tipo: LineaComision['tipo']): RenglonDia[] => {
+    const grupos = new Map<
+      string,
+      {
+        item: string;
+        categoria: string | null;
+        cantidad: number;
+        comandas: Set<string>;
+        sinValidar: Set<string>;
+      }
+    >();
+    for (const l of detalle.filter((x) => x.tipo === tipo)) {
+      const clave = `${l.categoria ?? ''}|${l.item}`;
+      const g = grupos.get(clave) ?? {
+        item: l.item,
+        categoria: l.categoria,
+        cantidad: 0,
+        comandas: new Set(),
+        sinValidar: new Set(),
+      };
+      g.cantidad += l.cantidad;
+      g.comandas.add(l.numero);
+      if (!l.validada) g.sinValidar.add(l.numero);
+      grupos.set(clave, g);
+    }
+    return [...grupos.values()]
+      .sort(
+        (a, b) =>
+          (a.categoria ?? '\uffff').localeCompare(
+            b.categoria ?? '\uffff',
+            'es',
+          ) || a.item.localeCompare(b.item, 'es'),
+      )
+      .map((g, i) => {
+        const comandas = [...g.comandas].sort(ordenComanda);
+        const noAsistio = tipo === 'NO_ASISTIO';
+        const sinValidar = g.sinValidar.size;
+        return {
+          key: `${tipo}-${i}-${g.item}`.slice(0, 80),
+          label: g.cantidad > 1 ? `${g.item} ×${g.cantidad}` : g.item,
+          detail: detalleComandas(g.categoria, comandas),
+          badge: noAsistio
+            ? 'No se presentó'
+            : sinValidar === 0
+              ? null
+              : sinValidar === comandas.length
+                ? 'sin validar'
+                : `${sinValidar} sin validar`,
+          tone: noAsistio ? 'warning' : 'default',
+          amount: null,
+          amountDetail: null,
+        };
+      });
+  };
+  const secciones: SeccionDia[] = [
+    { key: 'servicios', title: 'Servicios', lines: agrupar('SERVICIO') },
+    {
+      key: 'no-asistio',
+      title: 'No se presentaron',
+      lines: agrupar('NO_ASISTIO'),
+    },
+  ];
+  return secciones.filter((x) => x.lines.length > 0);
 }
