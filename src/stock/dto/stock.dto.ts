@@ -15,6 +15,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { EstadoSolicitudStock } from '../entities/SolicitudStock.entity';
@@ -30,11 +31,39 @@ export class CrearProductosStockDto {
 }
 
 export class ActualizarProductoStockDto {
-  @ApiProperty({ example: 'Tintura 7.1' })
+  @ApiProperty({ required: false, example: 'Tintura 7.1' })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
-  nombre: string;
+  nombre?: string;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description:
+      'Avisar cuando queden esta cantidad o menos (null = sólo con 1 o 0)',
+  })
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  stockMinimo?: number | null;
+}
+
+export class AjustarStockDto {
+  @ApiProperty({ example: 7, description: 'Lo que hay contado ahora' })
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  contado: number;
+
+  @ApiProperty({ required: false, example: 'Conteo del lunes' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  motivo?: string;
 }
 
 export class AsignarProductosDto {

@@ -26,6 +26,7 @@ import { AccesosEmpleadoService } from './accesos-empleado.service';
 import { EstadoSolicitudStock } from './entities/SolicitudStock.entity';
 import {
   ActualizarProductoStockDto,
+  AjustarStockDto,
   AsignarProductosDto,
   CrearProductosStockDto,
   CrearSolicitudStockDto,
@@ -63,12 +64,36 @@ export class StockController {
 
   @Patch('productos/:id')
   @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
-  @ApiOperation({ summary: 'Renombrar un producto' })
+  @ApiOperation({ summary: 'Renombrar un producto o cambiar su mínimo' })
   actualizarProducto(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ActualizarProductoStockDto,
   ) {
-    return this.stockService.actualizarProducto(id, dto.nombre);
+    return this.stockService.actualizarProducto(id, dto);
+  }
+
+  @Post('productos/:id/ajustes')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({ summary: 'Dejar la cantidad en lo que se contó' })
+  ajustar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AjustarStockDto,
+    @Req() req: Request,
+  ) {
+    const u = req.user as { nombre?: string } | undefined;
+    return this.stockService.ajustarAContado(
+      id,
+      dto.contado,
+      dto.motivo,
+      u?.nombre ?? null,
+    );
+  }
+
+  @Get('productos/:id/ajustes')
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  @ApiOperation({ summary: 'Conteos y correcciones del producto' })
+  listarAjustes(@Param('id', ParseUUIDPipe) id: string) {
+    return this.stockService.listarAjustes(id);
   }
 
   @Delete('productos/:id')

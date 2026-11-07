@@ -14,6 +14,7 @@ import stockConfig from './config/stock.config';
 import whatsappConfig from './config/whatsapp.config';
 import bookingConfig from './config/booking.config';
 import costearConfig from './config/costear.config';
+import { ComprasModule } from './compras/compras.module';
 import { CostearModule } from './integraciones/costear/costear.module';
 import anthropicConfig from './config/anthropic.config';
 
@@ -98,6 +99,7 @@ import { StockModule } from './stock/stock.module';
     ContableModule,
     ValidacionComandasModule,
     StockModule,
+    ComprasModule,
   ],
   controllers: [AppController],
   providers: [

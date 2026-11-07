@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductoStock } from './entities/ProductoStock.entity';
+import { AjusteStock } from './entities/AjusteStock.entity';
 import {
   SolicitudStock,
   SolicitudStockItem,
@@ -22,6 +23,7 @@ import { VotosWhatsappController } from './votos-whatsapp.controller';
   imports: [
     TypeOrmModule.forFeature([
       ProductoStock,
+      AjusteStock,
       SolicitudStock,
       SolicitudStockItem,
       Trabajador,
