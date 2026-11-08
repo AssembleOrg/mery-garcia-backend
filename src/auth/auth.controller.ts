@@ -33,22 +33,18 @@ export class AuthController {
   ) {}
 
   @Post('login')
-  @Audit({ 
-    action: 'LOGIN', 
+  @Audit({
+    action: 'LOGIN',
     entityType: 'Auth',
     description: 'Usuario inició sesión',
-    sensitiveFields: ['password', 'token', 'refreshToken']
+    sensitiveFields: ['password', 'token', 'refreshToken'],
   })
   @ApiOperation({ summary: 'Iniciar sesión' })
   @ApiResponse({ status: 200, description: 'Login exitoso' })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   async login(@Body() loginDto: LoginDto) {
-    console.log('loginDto', loginDto);
-    console.log('loginDto.password', loginDto.password);
-    const result = await this.authService.login(loginDto);
-    console.log('result', result);
-
-    return result;
+    // Nada de logs acá: la contraseña y el token quedaban en los logs de Railway.
+    return this.authService.login(loginDto);
   }
 
   /**
@@ -59,11 +55,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(RolPersonal.ADMIN)
   @ApiBearerAuth('access-token')
-  @Audit({ 
-    action: 'CREATE', 
+  @Audit({
+    action: 'CREATE',
     entityType: 'Auth',
     description: 'Usuario registrado en el sistema',
-    sensitiveFields: ['password', 'token', 'refreshToken', 'hash', 'salt']
+    sensitiveFields: ['password', 'token', 'refreshToken', 'hash', 'salt'],
   })
   @ApiOperation({
     summary: 'Registrar nuevo usuario (sólo administradores)',
@@ -74,9 +70,9 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Email ya registrado' })
   async register(@Body() registerDto: RegisterDto) {
     const user = await this.authService.register(registerDto);
-    
+
     // Registrar auditoría de registro
-    
+
     return user;
   }
 
