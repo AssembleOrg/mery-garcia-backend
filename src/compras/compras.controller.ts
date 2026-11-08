@@ -44,9 +44,12 @@ import {
   ProveedorCompraDto,
 } from './dto/compras.dto';
 
+/** Admin y quien tiene el rol compras (sólo ve esta sección). */
+const COMPRAS_ROLES = [RolPersonal.ADMIN, RolPersonal.COMPRAS];
+
 /**
  * Compras: pedidos a proveedores (de la nota "falta comprar X" hasta que
- * llega y suma al stock), proveedores y categorías. Sólo admin (el guard
+ * llega y suma al stock), proveedores y categorías. Admin y rol compras (el guard
  * de roles mira cada método, por eso va @Roles en todos).
  */
 @ApiTags('Compras')
@@ -61,7 +64,7 @@ export class ComprasController {
 
   // ─── Pedidos ─────────────────────────────────────────────────
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('pedidos')
   @ApiOperation({
     summary: 'Buscar pedidos (texto, estado, categoría, proveedor, fechas)',
@@ -70,27 +73,27 @@ export class ComprasController {
     return this.compras.listar(filtro);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('pedidos/por-estado')
   @ApiOperation({ summary: 'Cuántos pedidos hay en cada estado' })
   porEstado() {
     return this.compras.contarPorEstado();
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('pedidos/:id')
   obtener(@Param('id', ParseUUIDPipe) id: string) {
     return this.compras.obtener(id);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('pedidos')
   @ApiOperation({ summary: 'Nuevo pedido (por defecto queda Anotado)' })
   crear(@Body() dto: GuardarPedidoCompraDto, @Req() req: Request) {
     return this.compras.crear(dto, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Put('pedidos/:id')
   @ApiOperation({
     summary: 'Editar un pedido (hasta 48 h después de comprado)',
@@ -103,7 +106,7 @@ export class ComprasController {
     return this.compras.actualizar(id, dto, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Patch('pedidos/:id/estado')
   @ApiOperation({ summary: 'Pasar el pedido a otro estado' })
   cambiarEstado(
@@ -114,7 +117,7 @@ export class ComprasController {
     return this.compras.cambiarEstado(id, dto.estado, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('pedidos/:id/entregar')
   @ApiOperation({ summary: 'Llegó: lo que afecta stock empieza a sumar' })
   entregar(
@@ -125,14 +128,14 @@ export class ComprasController {
     return this.compras.entregar(id, dto, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('pedidos/:id/repetir')
   @ApiOperation({ summary: 'Pedido nuevo con lo mismo que este (sin precios)' })
   repetir(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     return this.compras.repetir(id, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Delete('pedidos/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   eliminar(@Param('id', ParseUUIDPipe) id: string) {
@@ -142,7 +145,7 @@ export class ComprasController {
   // ─── Comprobantes ────────────────────────────────────────────
 
   /** multipart: uno o más `comprobantes` (imagen o PDF, 10 MB c/u). */
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('pedidos/:id/comprobantes')
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
@@ -158,7 +161,7 @@ export class ComprasController {
     return this.compras.agregarComprobantes(id, archivos, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('comprobantes/:id')
   async verComprobante(
     @Param('id', ParseUUIDPipe) id: string,
@@ -175,7 +178,7 @@ export class ComprasController {
     res.end(c.datos);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Delete('comprobantes/:id')
   eliminarComprobante(
     @Param('id', ParseUUIDPipe) id: string,
@@ -184,14 +187,14 @@ export class ComprasController {
     return this.compras.eliminarComprobante(id, usuario(req));
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('comprobantes/:id/costear')
   @ApiOperation({ summary: 'Volver a mandar el comprobante a Costear' })
   reenviarACostear(@Param('id', ParseUUIDPipe) id: string) {
     return this.compras.costearComprobante(id, true);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('comprobantes/:id/costear')
   @ApiOperation({ summary: 'Cómo quedó el comprobante en Costear' })
   estadoEnCostear(@Param('id', ParseUUIDPipe) id: string) {
@@ -200,19 +203,19 @@ export class ComprasController {
 
   // ─── Proveedores ─────────────────────────────────────────────
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('proveedores')
   listarProveedores(@Query('buscar') buscar?: string) {
     return this.catalogos.listarProveedores(buscar);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('proveedores')
   crearProveedor(@Body() dto: ProveedorCompraDto) {
     return this.catalogos.crearProveedor(dto);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Put('proveedores/:id')
   actualizarProveedor(
     @Param('id', ParseUUIDPipe) id: string,
@@ -221,7 +224,7 @@ export class ComprasController {
     return this.catalogos.actualizarProveedor(id, dto);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Delete('proveedores/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   eliminarProveedor(@Param('id', ParseUUIDPipe) id: string) {
@@ -230,19 +233,19 @@ export class ComprasController {
 
   // ─── Categorías ──────────────────────────────────────────────
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Get('categorias')
   listarCategorias() {
     return this.catalogos.listarCategorias();
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Post('categorias')
   crearCategoria(@Body() dto: CategoriaCompraDto) {
     return this.catalogos.crearCategoria(dto);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Put('categorias/:id')
   actualizarCategoria(
     @Param('id', ParseUUIDPipe) id: string,
@@ -251,7 +254,7 @@ export class ComprasController {
     return this.catalogos.actualizarCategoria(id, dto);
   }
 
-  @Roles(RolPersonal.ADMIN)
+  @Roles(...COMPRAS_ROLES)
   @Delete('categorias/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   eliminarCategoria(@Param('id', ParseUUIDPipe) id: string) {

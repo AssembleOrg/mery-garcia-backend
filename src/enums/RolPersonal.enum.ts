@@ -6,4 +6,6 @@ export enum RolPersonal {
   PRESENTISMO = 'presentismo',
   /** Personal de la estética: sólo pide productos de stock y ve sus solicitudes. */
   EMPLEADO = 'empleado',
+  /** Sólo ve Compras (pedidos a proveedores, proveedores y categorías). */
+  COMPRAS = 'compras',
 }

@@ -253,6 +253,33 @@ if (!URL || !URL.includes('mery_boot_test')) {
       expect(l.body.data.map((p: any) => p.notas)).toEqual(['Melisa Menfi']);
     });
 
+    it('el rol compras usa Compras y lee el stock, nada más', async () => {
+      await api().get('/compras/pedidos').set(como('compras')).expect(200);
+      await api().get('/compras/categorias').set(como('compras')).expect(200);
+      await api()
+        .post('/compras/pedidos')
+        .set(como('compras'))
+        .send({ nota: 'Faltan hisopos', proveedorIds: [], items: [] })
+        .expect(201);
+      await api().get('/stock/productos').set(como('compras')).expect(200);
+      // Contar o renombrar artículos es de Control de Stock: no.
+      await api()
+        .patch('/stock/productos/00000000-0000-0000-0000-000000000000')
+        .set(como('compras'))
+        .send({ stockMinimo: 1 })
+        .expect(403);
+      await api()
+        .post('/stock/productos/00000000-0000-0000-0000-000000000000/ajustes')
+        .set(como('compras'))
+        .send({ contado: 1 })
+        .expect(403);
+      // El pedido de prueba no cuenta para el resto.
+      await ds.query(`DELETE FROM compras_pedidos`);
+      await ds.query(
+        `ALTER SEQUENCE compras_pedidos_numero_seq RESTART WITH 1`,
+      );
+    });
+
     it('sólo admin', async () => {
       await api().get('/compras/pedidos').set(como('encargado')).expect(403);
       await api()

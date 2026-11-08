@@ -49,7 +49,8 @@ export class StockController {
   ) {}
 
   @Get('productos')
-  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO)
+  // Compras lo lee para sugerir artículos y avisar lo que queda poco.
+  @Roles(RolPersonal.ADMIN, RolPersonal.ENCARGADO, RolPersonal.COMPRAS)
   @ApiOperation({ summary: 'Listar productos con los trabajadores asignados' })
   listarProductos() {
     return this.stockService.listarProductos();
