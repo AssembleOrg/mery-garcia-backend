@@ -405,10 +405,10 @@ export class ComprasService {
           `"${nombreArchivo(a.originalname)}" pesa más de 10 MB.`,
         );
     }
+    // Adjuntar se puede siempre (la factura suele llegar con la entrega,
+    // después de las 48 h); lo que se cierra a las 48 h es borrar.
     const nuevos = await this.ds.transaction(async (m) => {
-      const p = await this.bloquearFila(m, id);
-      if (bloqueado(p.compradoAt))
-        throw new ConflictException(MENSAJE_BLOQUEADO);
+      await this.bloquearFila(m, id);
       const existentes = await m.count(ComprobanteCompra, {
         where: { pedidoId: id },
       });

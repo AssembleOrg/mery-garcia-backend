@@ -530,13 +530,20 @@ if (!URL || !URL.includes('mery_boot_test')) {
         .delete(`/compras/comprobantes/${pedido.comprobantes[0].id}`)
         .set(como())
         .expect(409);
-      await api()
+      // La factura que llega con la entrega se puede adjuntar igual.
+      const tarde = await api()
         .post(`/compras/pedidos/${pedido.id}/comprobantes`)
         .set(como())
         .attach('comprobantes', Buffer.from('%PDF'), {
-          filename: 'f.pdf',
+          filename: 'factura.pdf',
           contentType: 'application/pdf',
         })
+        .expect(201);
+      expect(tarde.body.data.comprobantes).toHaveLength(2);
+      // …pero borrar no.
+      await api()
+        .delete(`/compras/comprobantes/${tarde.body.data.comprobantes[1].id}`)
+        .set(como())
         .expect(409);
 
       const copia = await api()
