@@ -13,6 +13,13 @@ import { ComandaService } from 'src/comanda/comanda.service';
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
 import { armarListado } from './resumen-detalle';
 import type { GananciaDia, SeccionDia } from './resumen-detalle';
+import {
+  armarCatalogo,
+  armarEquipo,
+  validarRango,
+  type CatalogoParaRitmo,
+  type EquipoParaRitmo,
+} from './equipo';
 import { TZ_EMPRESA, hoyEnEmpresa } from '../turnos/fechas';
 import { ConfirmacionServiciosDia } from './entities/ConfirmacionServiciosDia.entity';
 import {
@@ -65,6 +72,13 @@ export interface VinculoRitmo {
 
 /** Cada cuánto se vuelve a pedir el personal a Ritmo para resolver nombres. */
 const CACHE_PERSONAL_MS = 5 * 60_000;
+
+/**
+ * Cuánto se espera el listado de servicios del rango (sale del cálculo de
+ * comisiones, que es lo pesado). Ritmo corta a los 8 s: si esto tarda más,
+ * la producción sale igual con los números y sin el servicio por servicio.
+ */
+const ESPERA_LISTADO_MS = 5_500;
 
 /**
  * Qué servicios hizo cada trabajadora cada día, contado por categoría. Es lo
@@ -182,6 +196,59 @@ export class ServiciosDiaService {
         (nota ? `: ${nota}` : ''),
     );
     return { confirmedAt: ahora.toISOString() };
+  }
+
+  /**
+   * La producción de todo el equipo en un rango de días, para la consola de
+   * administración de Ritmo: por persona, cada día con sus categorías, sus
+   * comandas, el listado de servicios y si lo confirmó. Sin plata.
+   */
+  async equipoParaRitmo(
+    desde: string,
+    hasta: string,
+    resumenDesde: string,
+  ): Promise<EquipoParaRitmo> {
+    validarRango(desde, hasta);
+    const [categorias, dias, trabajadoras, detalle] = await Promise.all([
+      this.categoriasOrdenadas(),
+      this.listar(desde, hasta),
+      this.trabajadores.find({ withDeleted: true }),
+      this.listadoDelRango(desde, hasta),
+    ]);
+    return armarEquipo({
+      desde,
+      hasta,
+      resumenDesde,
+      categorias,
+      trabajadoras: trabajadoras.map((t) => ({
+        id: t.id,
+        nombre: t.nombre,
+        activo: t.activo,
+        borrada: !!t.deletedAt,
+        ritmoUserId: t.ritmoUserId,
+        ritmoConfirmaServicios: t.ritmoConfirmaServicios,
+      })),
+      dias,
+      detalle,
+    });
+  }
+
+  /** Las categorías cargadas (A, B, C...) con los servicios activos de cada una. */
+  async catalogoParaRitmo(): Promise<CatalogoParaRitmo> {
+    const [categorias, servicios] = await Promise.all([
+      this.categorias.find({ order: { orden: 'ASC', nombre: 'ASC' } }),
+      this.trabajadores.manager.query<
+        { id: string; nombre: string; categoriaId: string | null }[]
+      >(
+        `SELECT ps.id, ps.nombre, ps.categoria_id AS "categoriaId"
+           FROM productos_servicios ps
+          WHERE ps."deletedAt" IS NULL
+            AND ps.activo = true
+            AND ps.tipo = 'SERVICIO'
+          ORDER BY ps.nombre`,
+      ),
+    ]);
+    return armarCatalogo(categorias, servicios);
   }
 
   // ===================== Administración =====================
@@ -355,6 +422,51 @@ export class ServiciosDiaService {
         `Resumen de Ritmo sin listado (${dia}): ${(e as Error).message}`,
       );
       return { earnings: null, sections: [] };
+    }
+  }
+
+  /**
+   * Los renglones del cálculo de comisiones de todo el rango, por
+   * trabajadora (cada renglón trae su día). Una sola pasada para todas. Si
+   * falla o tarda demasiado, mapa vacío: la producción sale sin el listado.
+   */
+  private async listadoDelRango(
+    desde: string,
+    hasta: string,
+  ): Promise<Map<string, LineaComision[]>> {
+    let reloj: NodeJS.Timeout | undefined;
+    try {
+      const calculo = this.comandas.calcularComisionesTrabajadores({
+        fechaDesde: desde,
+        fechaHasta: hasta,
+        detalle: true,
+      }) as unknown as Promise<{
+        trabajadores: Array<{
+          trabajadorId: string;
+          detalle?: LineaComision[];
+        }>;
+      }>;
+      // Si pierde la carrera, que el rechazo tardío no quede sin atender.
+      calculo.catch(() => undefined);
+      const r = await Promise.race([
+        calculo,
+        new Promise<never>((_, rechazar) => {
+          reloj = setTimeout(
+            () => rechazar(new Error(`tardó más de ${ESPERA_LISTADO_MS} ms`)),
+            ESPERA_LISTADO_MS,
+          );
+        }),
+      ]);
+      return new Map(
+        r.trabajadores.map((t) => [t.trabajadorId, t.detalle ?? []]),
+      );
+    } catch (e) {
+      this.logger.warn(
+        `Producción del equipo sin listado (${desde} a ${hasta}): ${(e as Error).message}`,
+      );
+      return new Map();
+    } finally {
+      if (reloj) clearTimeout(reloj);
     }
   }
 

@@ -35,14 +35,40 @@ export class ResumenRitmoController {
     private readonly servicios: ServiciosDiaService,
   ) {}
 
-  /** GET /api/integraciones/ritmo/resumen?userId=<uuid de Ritmo>&day=AAAA-MM-DD */
+  /**
+   * GET /api/integraciones/ritmo/resumen?userId=<uuid de Ritmo>&day=AAAA-MM-DD
+   *
+   * Para la administración (la consola de Ritmo), la misma dirección con:
+   *  - `?scope=team&from=AAAA-MM-DD&to=AAAA-MM-DD`: producción de todo el
+   *    equipo, día por día (hasta 31 días).
+   *  - `?scope=catalog`: las categorías cargadas con sus servicios.
+   */
   @Get('resumen')
   async resumen(
     @Headers('x-ritmo-secret') secret: string | undefined,
     @Query('userId') userId: string | undefined,
     @Query('day') day: string | undefined,
+    @Query('scope') scope?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     if (!this.secretValido(secret)) throw new UnauthorizedException();
+    if (scope === 'catalog') return this.servicios.catalogoParaRitmo();
+    if (scope === 'team') {
+      if (!from || !to) throw new BadRequestException('Faltan from y to.');
+      try {
+        return await this.servicios.equipoParaRitmo(
+          from,
+          to,
+          this.cfg.resumenDesde,
+        );
+      } catch (e) {
+        if (e instanceof Error && !('status' in e))
+          throw new BadRequestException(e.message);
+        throw e;
+      }
+    }
+    if (scope) throw new BadRequestException('scope desconocido.');
     if (!userId || !UUID.test(userId))
       throw new BadRequestException('Falta userId.');
     if (!day) throw new BadRequestException('Falta day.');
