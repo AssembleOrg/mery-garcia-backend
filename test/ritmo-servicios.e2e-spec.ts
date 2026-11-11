@@ -232,7 +232,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
       const c1 = await comanda(EstadoDeComanda.PENDIENTE, hoy, '01-0001');
       await item(c1, laminado, luna, 2);
       await item(c1, tinte, luna);
-      await item(c1, crema, luna); // producto: no cuenta
+      await item(c1, crema, luna); // producto: no suma servicios, va en Productos
       await item(c1, laminado, rosario, 3);
       const c2 = await comanda(EstadoDeComanda.VALIDADO, hoy, '01-0002');
       await item(c2, laminado, luna);
@@ -339,8 +339,10 @@ if (!URL || !URL.includes('mery_boot_test')) {
       ]);
       expect(d.total).toBe(5);
       // c1 y c2: la cancelada, el egreso y la del ítem borrado no cuentan.
+      // La crema de c1 es un producto: no suma servicios, se cuenta aparte.
       expect(d.highlights).toEqual([
         { key: 'comandas', label: 'comandas', count: 2 },
+        { key: 'productos', label: 'producto', count: 1 },
       ]);
       expect(d.confirmation).toEqual({
         required: true,
@@ -377,7 +379,16 @@ if (!URL || !URL.includes('mery_boot_test')) {
       // El día que figura en una comanda (aunque sea por un producto) confirma.
       const ivAyer = await get({ userId: IVONNE_RITMO, day: ayer });
       expect(ivAyer.body.data.total).toBe(0);
-      expect(ivAyer.body.data.highlights[0].count).toBe(1);
+      expect(ivAyer.body.data.highlights).toEqual([
+        { key: 'comandas', label: 'comanda', count: 1 },
+        { key: 'productos', label: 'producto', count: 1 },
+      ]);
+      expect(
+        ivAyer.body.data.sections.map((x: any) => [
+          x.key,
+          x.lines.map((l: any) => [l.label, l.detail, l.amount]),
+        ]),
+      ).toEqual([['productos', [['Crema', 'Comanda 01-0005', null]]]]);
       expect(ivAyer.body.data.confirmation.required).toBe(true);
       const ka = await get({ userId: KARINA_RITMO, day: hoy });
       expect(ka.status).toBe(200);
@@ -456,6 +467,7 @@ if (!URL || !URL.includes('mery_boot_test')) {
       expect(filas[0].trabajadorId).toBe(luna.id);
       expect(filas[0].ritmoPunchId).toBeNull();
       expect(filas[0].comandas).toBe(2);
+      expect(filas[0].productos).toBe(1);
       expect(
         filas[0].resumen.map((l) => [l.label, l.count, l.validadas]),
       ).toEqual([
@@ -475,14 +487,32 @@ if (!URL || !URL.includes('mery_boot_test')) {
           d.nombre,
           d.comandas,
           d.total,
+          d.productos.map((x) => [x.item, x.numero, x.cantidad, x.validada]),
           d.confirmacion?.conforme ?? null,
         ]),
       ).toEqual([
-        [ayer, 'Ivonne', 1, 0, null],
-        [ayer, 'Luna', 1, 2, null],
-        [hoy, 'Luna', 2, 5, true],
-        [hoy, 'Rosario', 1, 3, null],
+        [ayer, 'Ivonne', 1, 0, [['Crema', '01-0005', 1, false]], null],
+        [ayer, 'Luna', 1, 2, [], null],
+        [hoy, 'Luna', 2, 5, [['Crema', '01-0001', 1, false]], true],
+        [hoy, 'Rosario', 1, 3, [], null],
       ]);
+
+      // Lo mismo, como lo pide la consola de Ritmo: productos por día, por
+      // persona y de todo el equipo, sin plata.
+      const equipo = (await get({ scope: 'team', from: ayer, to: hoy })).body
+        .data;
+      const cuenta = (hs: any[], key: string) =>
+        hs.find((x) => x.key === key)?.count;
+      expect(cuenta(equipo.highlights, 'productos')).toBe(2);
+      const lunaEq = equipo.people.find((x: any) => x.name === 'Luna');
+      expect(cuenta(lunaEq.highlights, 'productos')).toBe(1);
+      const lunaHoy = lunaEq.days.find((x: any) => x.day === hoy);
+      expect(cuenta(lunaHoy.highlights, 'productos')).toBe(1);
+      expect(lunaHoy.sections.map((x: any) => x.key)).toEqual([
+        'servicios',
+        'productos',
+      ]);
+      expect(JSON.stringify(equipo)).not.toMatch(/"amount":\s*\{/);
       await expect(servicios.listar(hoy, ayer)).rejects.toThrow('anterior');
 
       const vinculos = await servicios.vinculos();
@@ -519,7 +549,18 @@ if (!URL || !URL.includes('mery_boot_test')) {
     it('listado sin plata: servicio, categoría, cantidad y comandas', async () => {
       const d = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
       expect(d.earnings).toBeNull();
-      expect(d.sections.map((x: any) => x.key)).toEqual(['servicios']);
+      expect(d.sections.map((x: any) => x.key)).toEqual([
+        'servicios',
+        'productos',
+      ]);
+      expect(
+        d.sections[1].lines.map((l: any) => [
+          l.label,
+          l.detail,
+          l.badge,
+          l.amount,
+        ]),
+      ).toEqual([['Crema', 'Comanda 01-0001', 'sin validar', null]]);
       const lineas = d.sections[0].lines.map((l: any) => [
         l.label,
         l.detail,
@@ -560,9 +601,9 @@ if (!URL || !URL.includes('mery_boot_test')) {
       const d2 = (await get({ userId: LUNA_RITMO, day: hoy })).body.data;
       expect(d2.earnings).toBeNull();
       expect(
-        d2.sections[0].lines.every(
-          (l: any) => l.amount === null && l.amountDetail === null,
-        ),
+        d2.sections
+          .flatMap((x: any) => x.lines)
+          .every((l: any) => l.amount === null && l.amountDetail === null),
       ).toBe(true);
       expect(d2.items.find((i: any) => i.label === 'Categoría A').count).toBe(
         3,

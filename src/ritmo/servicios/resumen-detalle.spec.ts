@@ -2,6 +2,7 @@ import { lineaComision, LineaComision } from 'src/comanda/comisiones/detalle';
 import {
   armarGanancia,
   armarListado,
+  contarProductos,
   armarSecciones,
   detalleComandas,
 } from './resumen-detalle';
@@ -218,7 +219,7 @@ describe('armarListado (sin plata)', () => {
     }),
   ];
 
-  it('un renglón por servicio: cantidad, categoría y comandas; sin montos ni productos', () => {
+  it('un renglón por servicio: cantidad, categoría y comandas; sin montos', () => {
     const s = armarListado(lista);
     expect(s.map((x) => x.key)).toEqual(['servicios', 'no-asistio']);
     expect(
@@ -247,6 +248,40 @@ describe('armarListado (sin plata)', () => {
       tone: 'warning',
       amount: null,
     });
+  });
+
+  it('los productos vendidos van aparte, de las comandas y no del cálculo de comisiones', () => {
+    const vendidos = [
+      { item: 'Crema', numero: '01-11302', cantidad: 2, validada: true },
+      { item: 'Crema', numero: '01-11305', cantidad: 1, validada: false },
+      { item: 'After care', numero: '01-11305', cantidad: 1, validada: false },
+    ];
+    expect(contarProductos(vendidos)).toBe(4);
+    const s = armarListado(lista, vendidos);
+    expect(s.map((x) => [x.key, x.title])).toEqual([
+      ['servicios', 'Servicios'],
+      ['no-asistio', 'No se presentaron'],
+      ['productos', 'Productos'],
+    ]);
+    expect(
+      s[2].lines.map((x) => [x.label, x.detail, x.badge, x.tone, x.amount]),
+    ).toEqual([
+      ['After care', 'Comanda 01-11305', 'sin validar', 'default', null],
+      [
+        'Crema ×3',
+        'Comandas 01-11302 · 01-11305',
+        '1 sin validar',
+        'default',
+        null,
+      ],
+    ]);
+    // Un día sólo con productos (o sin el cálculo de comisiones) los muestra igual.
+    expect(armarListado([], vendidos).map((x) => x.key)).toEqual(['productos']);
+    // El renglón de producto del cálculo de comisiones no se usa: no duplica.
+    expect(armarListado(lista).map((x) => x.key)).toEqual([
+      'servicios',
+      'no-asistio',
+    ]);
   });
 
   it('muchas comandas: se recorta para entrar en 140 caracteres', () => {

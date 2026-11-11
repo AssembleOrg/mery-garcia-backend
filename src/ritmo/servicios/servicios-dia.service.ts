@@ -11,8 +11,12 @@ import { CategoriaServicio } from 'src/comanda/entities/categoriaServicio.entity
 import { RitmoService } from '../ritmo.service';
 import { ComandaService } from 'src/comanda/comanda.service';
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
-import { armarListado } from './resumen-detalle';
-import type { GananciaDia, SeccionDia } from './resumen-detalle';
+import { armarListado, contarProductos } from './resumen-detalle';
+import type {
+  GananciaDia,
+  ProductoVendido,
+  SeccionDia,
+} from './resumen-detalle';
 import {
   armarCatalogo,
   armarEquipo,
@@ -33,8 +37,10 @@ import {
 } from './resumen';
 import {
   FilaSqlComandas,
+  FilaSqlProductos,
   FilaSqlServicios,
   SQL_COMANDAS_POR_DIA,
+  SQL_PRODUCTOS_POR_DIA,
   SQL_SERVICIOS_POR_DIA,
 } from './servicios-dia.sql';
 
@@ -49,6 +55,8 @@ export interface DiaDeTrabajadora {
   dia: string;
   /** En cuántas comandas estuvo ese día. */
   comandas: number;
+  /** Los productos que vendió ese día, por comanda. */
+  productos: ProductoVendido[];
   lineas: LineaResumen[];
   total: number;
   confirmacion: {
@@ -119,9 +127,10 @@ export class ServiciosDiaService {
     const trabajadora = await this.trabajadoraDeRitmo(ritmoUserId);
     if (!trabajadora) return { available: false, day };
 
-    const [lineas, comandas, confirmacion] = await Promise.all([
+    const [lineas, comandas, productos, confirmacion] = await Promise.all([
       this.lineasDe(trabajadora.id, day),
       this.comandasDe(trabajadora.id, day),
+      this.productosDe(trabajadora.id, day),
       this.confirmaciones.findOne({
         where: { trabajadorId: trabajadora.id, dia: day },
       }),
@@ -129,11 +138,13 @@ export class ServiciosDiaService {
     const { earnings, sections } = await this.plataYListado(
       trabajadora.id,
       day,
+      productos,
     );
     return armarResumen({
       dia: day,
       lineas,
       comandas,
+      productos: contarProductos(productos),
       earnings,
       sections,
       confirmacionObligatoria: confirmacionObligatoria(
@@ -166,9 +177,10 @@ export class ServiciosDiaService {
       throw new BadRequestException('Si no coincide, hace falta decir qué.');
     }
 
-    const [lineas, comandas] = await Promise.all([
+    const [lineas, comandas, productos] = await Promise.all([
       this.lineasDe(trabajadora.id, day),
       this.comandasDe(trabajadora.id, day),
+      this.productosDe(trabajadora.id, day),
     ]);
     const ahora = new Date();
     const existente = await this.confirmaciones.findOne({
@@ -187,6 +199,7 @@ export class ServiciosDiaService {
       validadas,
     }));
     fila.comandas = comandas;
+    fila.productos = contarProductos(productos);
     fila.ritmoPunchId = input.punchId ?? null;
     fila.confirmadoEn = ahora;
     await this.confirmaciones.save(fila);
@@ -201,7 +214,8 @@ export class ServiciosDiaService {
   /**
    * La producción de todo el equipo en un rango de días, para la consola de
    * administración de Ritmo: por persona, cada día con sus categorías, sus
-   * comandas, el listado de servicios y si lo confirmó. Sin plata.
+   * comandas, el listado de servicios, los productos que vendió y si lo
+   * confirmó. Sin plata.
    */
   async equipoParaRitmo(
     desde: string,
@@ -259,23 +273,35 @@ export class ServiciosDiaService {
     const h = validarDia(hasta);
     if (h < d) throw new BadRequestException('"hasta" es anterior a "desde".');
 
-    const [categorias, filas, comandas, trabajadoras, confirmaciones] =
-      await Promise.all([
-        this.categoriasOrdenadas(),
-        this.trabajadores.manager.query<FilaSqlServicios[]>(
-          SQL_SERVICIOS_POR_DIA,
-          [TZ_EMPRESA, d, h, null],
-        ),
-        this.trabajadores.manager.query<FilaSqlComandas[]>(
-          SQL_COMANDAS_POR_DIA,
-          [TZ_EMPRESA, d, h, null],
-        ),
-        this.trabajadores.find({ withDeleted: true }),
-        this.confirmaciones
-          .createQueryBuilder('c')
-          .where('c.dia BETWEEN :d AND :h', { d, h })
-          .getMany(),
-      ]);
+    const [
+      categorias,
+      filas,
+      comandas,
+      vendidos,
+      trabajadoras,
+      confirmaciones,
+    ] = await Promise.all([
+      this.categoriasOrdenadas(),
+      this.trabajadores.manager.query<FilaSqlServicios[]>(
+        SQL_SERVICIOS_POR_DIA,
+        [TZ_EMPRESA, d, h, null],
+      ),
+      this.trabajadores.manager.query<FilaSqlComandas[]>(SQL_COMANDAS_POR_DIA, [
+        TZ_EMPRESA,
+        d,
+        h,
+        null,
+      ]),
+      this.trabajadores.manager.query<FilaSqlProductos[]>(
+        SQL_PRODUCTOS_POR_DIA,
+        [TZ_EMPRESA, d, h, null],
+      ),
+      this.trabajadores.find({ withDeleted: true }),
+      this.confirmaciones
+        .createQueryBuilder('c')
+        .where('c.dia BETWEEN :d AND :h', { d, h })
+        .getMany(),
+    ]);
     const nombres = new Map(trabajadoras.map((t) => [t.id, t.nombre]));
     const confirmadas = new Map(
       confirmaciones.map((c) => [`${c.trabajadorId}|${c.dia}`, c]),
@@ -284,6 +310,15 @@ export class ServiciosDiaService {
     const comandasPorClave = new Map(
       comandas.map((f) => [`${f.trabajadorId}|${f.dia}`, f.comandas]),
     );
+
+    const productosPorClave = new Map<string, ProductoVendido[]>();
+    for (const { trabajadorId, dia, ...producto } of vendidos) {
+      const clave = `${trabajadorId}|${dia}`;
+      productosPorClave.set(clave, [
+        ...(productosPorClave.get(clave) ?? []),
+        producto,
+      ]);
+    }
 
     const porClave = new Map<string, FilaSqlServicios[]>();
     for (const f of filas) {
@@ -307,6 +342,7 @@ export class ServiciosDiaService {
           nombre: nombres.get(trabajadorId) ?? '(sin nombre)',
           dia,
           comandas: comandasPorClave.get(clave) ?? 0,
+          productos: productosPorClave.get(clave) ?? [],
           lineas,
           total: lineas.reduce((s, l) => s + l.count, 0),
           confirmacion: c
@@ -396,13 +432,15 @@ export class ServiciosDiaService {
 
   /**
    * Listado del día (qué servicio, categoría, cuántos y en qué comandas),
-   * del mismo cálculo que la pantalla de Comisiones. Por ahora sin plata:
-   * `earnings` va siempre null. Si falla, el resumen sale igual sin esto
+   * del mismo cálculo que la pantalla de Comisiones, más los productos que
+   * vendió. Por ahora sin plata: `earnings` va siempre null. Si el cálculo
+   * falla, el resumen sale igual con los productos y sin los servicios
    * (Ritmo espera 8 s y nunca debe trabar un cierre de turno).
    */
   private async plataYListado(
     trabajadorId: string,
     dia: string,
+    productos: ProductoVendido[],
   ): Promise<{ earnings: GananciaDia | null; sections: SeccionDia[] }> {
     try {
       const r = (await this.comandas.calcularComisionesTrabajadores({
@@ -416,12 +454,15 @@ export class ServiciosDiaService {
         }>;
       };
       const fila = r.trabajadores.find((t) => t.trabajadorId === trabajadorId);
-      return { earnings: null, sections: armarListado(fila?.detalle ?? []) };
+      return {
+        earnings: null,
+        sections: armarListado(fila?.detalle ?? [], productos),
+      };
     } catch (e) {
       this.logger.warn(
         `Resumen de Ritmo sin listado (${dia}): ${(e as Error).message}`,
       );
-      return { earnings: null, sections: [] };
+      return { earnings: null, sections: armarListado([], productos) };
     }
   }
 
@@ -490,6 +531,23 @@ export class ServiciosDiaService {
       [TZ_EMPRESA, dia, dia, trabajadorId],
     );
     return filas[0]?.comandas ?? 0;
+  }
+
+  /** Los productos que vendió ese día, por comanda. */
+  private async productosDe(
+    trabajadorId: string,
+    dia: string,
+  ): Promise<ProductoVendido[]> {
+    const filas = await this.trabajadores.manager.query<FilaSqlProductos[]>(
+      SQL_PRODUCTOS_POR_DIA,
+      [TZ_EMPRESA, dia, dia, trabajadorId],
+    );
+    return filas.map(({ item, numero, cantidad, validada }) => ({
+      item,
+      numero,
+      cantidad,
+      validada,
+    }));
   }
 
   private async categoriasOrdenadas(): Promise<

@@ -124,6 +124,7 @@ describe('producción del equipo para Ritmo', () => {
     ]);
     expect(r.highlights).toEqual([
       { key: 'comandas', label: 'comandas', count: 3 },
+      { key: 'productos', label: 'productos', count: 0 },
     ]);
   });
 
@@ -160,6 +161,7 @@ describe('producción del equipo para Ritmo', () => {
     expect([lunes.day, martes.day]).toEqual(['2026-11-10', '2026-11-11']);
     expect(lunes.highlights).toEqual([
       { key: 'comandas', label: 'comandas', count: 2 },
+      { key: 'productos', label: 'productos', count: 0 },
     ]);
     expect(lunes.items.map((i) => [i.label, i.count])).toEqual([
       ['Categoría A', 2],
@@ -178,6 +180,58 @@ describe('producción del equipo para Ritmo', () => {
         d.sections.flatMap((s) => s.lines.map((l) => l.amount)),
       ),
     ).toEqual([null, null]);
+  });
+
+  it('los productos vendidos: por día, por persona y de todo el equipo', () => {
+    const crema = (numero: string, cantidad = 1) => ({
+      item: 'Crema',
+      numero,
+      cantidad,
+      validada: true,
+    });
+    const r = armarEquipo({
+      ...base,
+      trabajadoras: [trabajadora('l', 'Luna'), trabajadora('r', 'Rosario')],
+      dias: [
+        dia('l', '2026-11-10', 2, { productos: [crema('01-1', 2)] }),
+        dia('l', '2026-11-11', 1, { productos: [crema('01-3')] }),
+        // Sólo vendió un producto: sin servicios, pero estuvo en una comanda.
+        dia('r', '2026-11-11', 0, { comandas: 1, productos: [crema('01-9')] }),
+      ],
+      detalle: new Map([['l', [linea('2026-11-10', '01-1', 'Laminado')]]]),
+    });
+    const [luna, rosario] = r.people;
+    expect(luna.days.map((d) => d.highlights[1])).toEqual([
+      { key: 'productos', label: 'productos', count: 2 },
+      { key: 'productos', label: 'producto', count: 1 },
+    ]);
+    expect(
+      luna.days[0].sections.map((s) => [s.key, s.lines.map((l) => l.label)]),
+    ).toEqual([
+      ['servicios', ['Laminado']],
+      ['productos', ['Crema ×2']],
+    ]);
+    expect(luna.highlights).toEqual([
+      { key: 'comandas', label: 'comandas', count: 3 },
+      { key: 'productos', label: 'productos', count: 3 },
+    ]);
+    expect(rosario.days[0]).toMatchObject({
+      total: 0,
+      highlights: [
+        { key: 'comandas', label: 'comanda', count: 1 },
+        { key: 'productos', label: 'producto', count: 1 },
+      ],
+      sections: [
+        {
+          key: 'productos',
+          lines: [{ label: 'Crema', detail: 'Comanda 01-9', amount: null }],
+        },
+      ],
+    });
+    expect(r.highlights).toEqual([
+      { key: 'comandas', label: 'comandas', count: 4 },
+      { key: 'productos', label: 'productos', count: 4 },
+    ]);
   });
 
   it('la confirmación: pendiente, hecha, discutida, o no corresponde', () => {

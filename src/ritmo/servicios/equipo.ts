@@ -1,19 +1,20 @@
 /**
  * Lo que Ritmo le muestra a la administración: la producción de todo el
  * equipo en un rango de días (cuántos servicios de cada categoría hizo cada
- * una, en cuántas comandas, qué servicios y si confirmó el día), y el
+ * una, en cuántas comandas, qué servicios, qué productos vendió y si
+ * confirmó el día), y el
  * catálogo de categorías con sus servicios.
  *
  * Son los mismos números que ve cada persona al cerrar su turno (mismas
  * consultas y mismo cálculo), juntos. Sin plata.
  */
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
-import { armarListado } from './resumen-detalle';
-import type { SeccionDia } from './resumen-detalle';
+import { armarListado, contarProductos } from './resumen-detalle';
+import type { ProductoVendido, SeccionDia } from './resumen-detalle';
 import {
   SIN_CATEGORIA,
   confirmacionObligatoria,
-  etiquetaComandas,
+  destacados,
   validarDia,
   type ConfirmacionVista,
   type LineaResumen,
@@ -42,9 +43,9 @@ export interface PersonaEquipo {
   /** Su persona en Ritmo, si está vinculada. */
   userId: string | null;
   name: string;
-  /** El total del rango, ya con su etiqueta: "12 comandas". */
+  /** Los totales del rango, ya con su etiqueta: "12 comandas", "3 productos". */
   highlights: { key: string; label: string; count: number }[];
-  /** Sólo los días con algo: comandas, servicios o una confirmación. */
+  /** Sólo los días con algo: comandas, servicios, productos o una confirmación. */
   days: DiaEquipo[];
 }
 
@@ -71,6 +72,8 @@ export interface DiaTrabajado {
   trabajadorId: string;
   dia: string;
   comandas: number;
+  /** Los productos que vendió ese día, por comanda. */
+  productos?: ProductoVendido[];
   lineas: LineaResumen[];
   total: number;
   confirmacion: ConfirmacionVista | null;
@@ -122,13 +125,10 @@ export function armarEquipo(input: {
           const seConfirma = !!t.ritmoUserId && d.dia >= input.resumenDesde;
           return {
             day: d.dia,
-            highlights: [
-              {
-                key: 'comandas',
-                label: etiquetaComandas(d.comandas),
-                count: d.comandas,
-              },
-            ],
+            highlights: destacados(
+              d.comandas,
+              contarProductos(d.productos ?? []),
+            ),
             items: d.lineas.map(({ key, label, count, detail }) => ({
               key,
               label,
@@ -136,7 +136,10 @@ export function armarEquipo(input: {
               detail,
             })),
             total: d.total,
-            sections: armarListado(renglones.filter((l) => l.dia === d.dia)),
+            sections: armarListado(
+              renglones.filter((l) => l.dia === d.dia),
+              d.productos ?? [],
+            ),
             confirmation:
               seConfirma || d.confirmacion
                 ? {
@@ -158,7 +161,7 @@ export function armarEquipo(input: {
         key: t.id,
         userId: t.ritmoUserId,
         name: t.nombre,
-        highlights: [comandasDe(days)],
+        highlights: totalesDe(days),
         days,
       };
     });
@@ -169,15 +172,19 @@ export function armarEquipo(input: {
     categories: [...input.categorias]
       .sort((a, b) => a.orden - b.orden || a.nombre.localeCompare(b.nombre))
       .map((c) => ({ key: c.id, label: c.nombre })),
-    highlights: [comandasDe(people.flatMap((p) => p.days))],
+    highlights: totalesDe(people.flatMap((p) => p.days)),
     people,
   };
 }
 
-/** "12 comandas": las de todos esos días juntas. */
-function comandasDe(days: DiaEquipo[]) {
-  const count = days.reduce((s, d) => s + (d.highlights[0]?.count ?? 0), 0);
-  return { key: 'comandas', label: etiquetaComandas(count), count };
+/** "12 comandas", "3 productos": los de todos esos días juntos. */
+function totalesDe(days: DiaEquipo[]) {
+  const de = (key: string) =>
+    days.reduce(
+      (s, d) => s + (d.highlights.find((h) => h.key === key)?.count ?? 0),
+      0,
+    );
+  return destacados(de('comandas'), de('productos'));
 }
 
 export interface CatalogoParaRitmo {

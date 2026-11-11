@@ -69,8 +69,23 @@ describe('resumen de servicios del día para Ritmo', () => {
       agreed: null,
       note: null,
     });
+    // Los productos van aunque sean 0: se ve que se cuentan.
     expect(sin.highlights).toEqual([
       { key: 'comandas', label: 'comandas', count: 4 },
+      { key: 'productos', label: 'productos', count: 0 },
+    ]);
+    expect(
+      armarResumen({
+        dia: '2026-10-19',
+        lineas,
+        comandas: 1,
+        productos: 1,
+        confirmacionObligatoria: true,
+        confirmacion: null,
+      }).highlights,
+    ).toEqual([
+      { key: 'comandas', label: 'comanda', count: 1 },
+      { key: 'productos', label: 'producto', count: 1 },
     ]);
     expect(sin.items[0]).toEqual({
       key: 'a',

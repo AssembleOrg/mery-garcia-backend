@@ -4,7 +4,7 @@
  * lo que confirma.
  *
  * Se cuenta por ítem de comanda (cantidad), sólo servicios (los productos no
- * son "servicios hechos"), de comandas de ingreso no canceladas, estén o no
+ * son "servicios hechos": van aparte, como un número más y su listado), de comandas de ingreso no canceladas, estén o no
  * validadas: la validación sella el número, pero el día de la persona es el
  * mismo. Lo que no está validado se dice aparte ("2 validadas").
  */
@@ -36,7 +36,7 @@ export interface ResumenParaRitmo {
   available: true;
   day: string;
   title: string;
-  /** El número que va arriba de todo: en cuántas comandas estuvo. */
+  /** Los números que van arriba de todo: comandas en las que estuvo y productos que vendió. */
   highlights: { key: string; label: string; count: number }[];
   items: { key: string; label: string; count: number; detail: string }[];
   total: number;
@@ -132,6 +132,20 @@ export function armarLineas(
 export const etiquetaComandas = (n: number) =>
   n === 1 ? 'comanda' : 'comandas';
 
+/** "1 producto" / "3 productos". */
+export const etiquetaProductos = (n: number) =>
+  n === 1 ? 'producto' : 'productos';
+
+/**
+ * Los números que van arriba de todo: en cuántas comandas estuvo y cuántos
+ * productos vendió. Los productos van aunque sean 0: así la persona ve que
+ * se cuentan, y si vendió uno que no figura lo puede decir.
+ */
+export const destacados = (comandas: number, productos: number) => [
+  { key: 'comandas', label: etiquetaComandas(comandas), count: comandas },
+  { key: 'productos', label: etiquetaProductos(productos), count: productos },
+];
+
 /**
  * Tiene que confirmar si está marcada para hacerlo siempre (Luna, Rosario) o
  * si ese día figura en alguna comanda (Ivonne sólo los días que atendió).
@@ -148,6 +162,8 @@ export function armarResumen(input: {
   lineas: LineaResumen[];
   /** Comandas distintas con algún ítem a su nombre ese día. */
   comandas: number;
+  /** Unidades de producto que vendió ese día. */
+  productos?: number;
   confirmacionObligatoria: boolean;
   confirmacion: ConfirmacionVista | null;
   earnings?: GananciaDia | null;
@@ -162,13 +178,7 @@ export function armarResumen(input: {
     available: true,
     day: input.dia,
     title: 'Servicios del día',
-    highlights: [
-      {
-        key: 'comandas',
-        label: etiquetaComandas(input.comandas),
-        count: input.comandas,
-      },
-    ],
+    highlights: destacados(input.comandas, input.productos ?? 0),
     items: input.lineas.map(({ key, label, count, detail }) => ({
       key,
       label,

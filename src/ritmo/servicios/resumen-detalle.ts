@@ -5,7 +5,7 @@
  *
  * Por ahora Ritmo no muestra plata (pedido de Charly 07/11): va
  * `armarListado` (qué servicio, de qué categoría, cuántos y en qué
- * comandas). `armarSecciones`/`armarGanancia` quedan para cuando se vuelva a
+ * comandas; y qué productos vendió). `armarSecciones`/`armarGanancia` quedan para cuando se vuelva a
  * mostrar: la plata solo con esquema por base fija.
  */
 import type { LineaComision } from 'src/comanda/comisiones/detalle';
@@ -159,72 +159,117 @@ export function detalleComandas(
 const ordenComanda = (a: string, b: string) =>
   a.localeCompare(b, 'es', { numeric: true });
 
+/** Un producto vendido en una comanda: lo que sale de las comandas del día. */
+export interface ProductoVendido {
+  item: string;
+  numero: string;
+  cantidad: number;
+  validada: boolean;
+}
+
+/** Cuántas unidades vendió en total. */
+export const contarProductos = (productos: ProductoVendido[]): number =>
+  productos.reduce((s, p) => s + p.cantidad, 0);
+
+interface Agrupable {
+  item: string;
+  categoria: string | null;
+  cantidad: number;
+  numero: string;
+  validada: boolean;
+}
+
+/**
+ * Un renglón por cosa (servicio o producto) con cuántas fueron, su categoría
+ * si tiene y en qué comandas está. Sin plata.
+ */
+function agrupar(
+  clave: string,
+  filas: Agrupable[],
+  noAsistio = false,
+): RenglonDia[] {
+  const grupos = new Map<
+    string,
+    {
+      item: string;
+      categoria: string | null;
+      cantidad: number;
+      comandas: Set<string>;
+      sinValidar: Set<string>;
+    }
+  >();
+  for (const l of filas) {
+    const k = `${l.categoria ?? ''}|${l.item}`;
+    const g = grupos.get(k) ?? {
+      item: l.item,
+      categoria: l.categoria,
+      cantidad: 0,
+      comandas: new Set(),
+      sinValidar: new Set(),
+    };
+    g.cantidad += l.cantidad;
+    g.comandas.add(l.numero);
+    if (!l.validada) g.sinValidar.add(l.numero);
+    grupos.set(k, g);
+  }
+  return [...grupos.values()]
+    .sort(
+      (a, b) =>
+        (a.categoria ?? '￿').localeCompare(b.categoria ?? '￿', 'es') ||
+        a.item.localeCompare(b.item, 'es'),
+    )
+    .map((g, i) => {
+      const comandas = [...g.comandas].sort(ordenComanda);
+      const sinValidar = g.sinValidar.size;
+      return {
+        key: `${clave}-${i}-${g.item}`.slice(0, 80),
+        label: g.cantidad > 1 ? `${g.item} ×${g.cantidad}` : g.item,
+        detail: detalleComandas(g.categoria, comandas),
+        badge: noAsistio
+          ? 'No se presentó'
+          : sinValidar === 0
+            ? null
+            : sinValidar === comandas.length
+              ? 'sin validar'
+              : `${sinValidar} sin validar`,
+        tone: noAsistio ? 'warning' : 'default',
+        amount: null,
+        amountDetail: null,
+      };
+    });
+}
+
 /**
  * Listado sin plata: un renglón por servicio (con cuántos hizo), su
- * categoría y en qué comandas está. Las clientas que no se presentaron van
- * aparte. Los productos no van (no son servicios).
+ * categoría y en qué comandas está; las clientas que no se presentaron
+ * aparte; y al final los productos que vendió (con cuántos y en qué
+ * comandas). Los productos vienen de las comandas, no del cálculo de
+ * comisiones: uno que no comisiona tiene que figurar igual.
  */
-export function armarListado(detalle: LineaComision[]): SeccionDia[] {
-  const agrupar = (tipo: LineaComision['tipo']): RenglonDia[] => {
-    const grupos = new Map<
-      string,
-      {
-        item: string;
-        categoria: string | null;
-        cantidad: number;
-        comandas: Set<string>;
-        sinValidar: Set<string>;
-      }
-    >();
-    for (const l of detalle.filter((x) => x.tipo === tipo)) {
-      const clave = `${l.categoria ?? ''}|${l.item}`;
-      const g = grupos.get(clave) ?? {
-        item: l.item,
-        categoria: l.categoria,
-        cantidad: 0,
-        comandas: new Set(),
-        sinValidar: new Set(),
-      };
-      g.cantidad += l.cantidad;
-      g.comandas.add(l.numero);
-      if (!l.validada) g.sinValidar.add(l.numero);
-      grupos.set(clave, g);
-    }
-    return [...grupos.values()]
-      .sort(
-        (a, b) =>
-          (a.categoria ?? '\uffff').localeCompare(
-            b.categoria ?? '\uffff',
-            'es',
-          ) || a.item.localeCompare(b.item, 'es'),
-      )
-      .map((g, i) => {
-        const comandas = [...g.comandas].sort(ordenComanda);
-        const noAsistio = tipo === 'NO_ASISTIO';
-        const sinValidar = g.sinValidar.size;
-        return {
-          key: `${tipo}-${i}-${g.item}`.slice(0, 80),
-          label: g.cantidad > 1 ? `${g.item} ×${g.cantidad}` : g.item,
-          detail: detalleComandas(g.categoria, comandas),
-          badge: noAsistio
-            ? 'No se presentó'
-            : sinValidar === 0
-              ? null
-              : sinValidar === comandas.length
-                ? 'sin validar'
-                : `${sinValidar} sin validar`,
-          tone: noAsistio ? 'warning' : 'default',
-          amount: null,
-          amountDetail: null,
-        };
-      });
-  };
+export function armarListado(
+  detalle: LineaComision[],
+  productos: ProductoVendido[] = [],
+): SeccionDia[] {
+  const de = (tipo: LineaComision['tipo']) =>
+    detalle.filter((x) => x.tipo === tipo);
   const secciones: SeccionDia[] = [
-    { key: 'servicios', title: 'Servicios', lines: agrupar('SERVICIO') },
+    {
+      key: 'servicios',
+      title: 'Servicios',
+      lines: agrupar('SERVICIO', de('SERVICIO')),
+    },
     {
       key: 'no-asistio',
       title: 'No se presentaron',
-      lines: agrupar('NO_ASISTIO'),
+      lines: agrupar('NO_ASISTIO', de('NO_ASISTIO'), true),
+    },
+    {
+      key: 'productos',
+      title: 'Productos',
+      lines: agrupar(
+        'PRODUCTO',
+        productos.map((p) => ({ ...p, categoria: null })),
+      ),
     },
   ];
   return secciones.filter((x) => x.lines.length > 0);

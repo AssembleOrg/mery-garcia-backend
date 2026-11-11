@@ -68,3 +68,47 @@ export interface FilaSqlComandas {
   dia: string;
   comandas: number;
 }
+
+/**
+ * Productos vendidos por trabajadora y día: un renglón por producto y
+ * comanda, con cuántas unidades. Mismas comandas que cuentan para
+ * SQL_COMANDAS_POR_DIA (ingreso, no canceladas ni borradas, la clienta se
+ * presentó), estén o no validadas.
+ *
+ * Sale directo de las comandas y no del cálculo de comisiones: ahí un
+ * producto que no comisiona no deja renglón, y acá tiene que estar igual,
+ * porque es lo que la persona confirma que vendió.
+ *
+ * Mismos parámetros que SQL_SERVICIOS_POR_DIA.
+ */
+export const SQL_PRODUCTOS_POR_DIA = `
+  SELECT ic.trabajador_id                                    AS "trabajadorId",
+         to_char(c."createdAt" AT TIME ZONE $1, 'YYYY-MM-DD') AS dia,
+         ps.nombre                                            AS item,
+         c.numero                                             AS numero,
+         SUM(ic.cantidad)::int                                AS cantidad,
+         (c."estadoDeComanda" = 'VALIDADO')                   AS validada
+    FROM item_comanda ic
+    JOIN comandas c             ON c.id = ic.comanda_id
+    JOIN productos_servicios ps ON ps.id = ic.producto_servicio_id
+   WHERE ic."deletedAt" IS NULL
+     AND c."deletedAt" IS NULL
+     AND ic.trabajador_id IS NOT NULL
+     AND c."tipoDeComanda" = 'INGRESO'
+     AND c."estadoDeComanda" <> 'CANCELADA'
+     AND c."noAsistio" = false
+     AND ps.tipo = 'PRODUCTO'
+     AND (c."createdAt" AT TIME ZONE $1)::date BETWEEN $2::date AND $3::date
+     AND ($4::uuid IS NULL OR ic.trabajador_id = $4::uuid)
+   GROUP BY ic.trabajador_id, dia, ps.nombre, c.numero, c."estadoDeComanda"
+   ORDER BY dia, ic.trabajador_id, ps.nombre, c.numero
+`;
+
+export interface FilaSqlProductos {
+  trabajadorId: string;
+  dia: string;
+  item: string;
+  numero: string;
+  cantidad: number;
+  validada: boolean;
+}

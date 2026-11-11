@@ -57,6 +57,10 @@ export class ConfirmacionServiciosDia {
   @Column({ type: 'int', nullable: true })
   comandas: number | null;
 
+  /** Cuántos productos figuraban vendidos al confirmar (null: confirmado antes de contarlos). */
+  @Column({ type: 'int', nullable: true })
+  productos: number | null;
+
   /** Id de la marca de salida en Ritmo, si confirmó al cerrar el turno. */
   @Column({ type: 'uuid', nullable: true })
   ritmoPunchId: string | null;
