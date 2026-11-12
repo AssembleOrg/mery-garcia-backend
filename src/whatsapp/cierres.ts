@@ -1,30 +1,27 @@
 /**
- * Cierres del estudio (vacaciones, cierres puntuales). Los días también se
- * bloquean en Mery Booking (días libres de cada profesional); acá queda lo que
- * el bot tiene que decir:
+ * Cierres del estudio (vacaciones, cierres puntuales). Las fechas se cargan
+ * desde el panel (Configuración > WhatsApp > Bot); los días también se bloquean
+ * en Mery Booking (días libres de cada profesional). Acá queda lo que el bot
+ * tiene que decir:
  *
- * - {cierre} en una respuesta: el aviso desde AVISO_DIAS_ANTES días antes hasta
+ * - {cierre} en una respuesta: el aviso desde diasAvisoCierre días antes hasta
  *   el último día cerrado; fuera de eso desaparece solo.
  * - Durante el cierre, el pase a recepción avisa que están cerradas y cuándo
  *   vuelven, en lugar de prometer que recepción contesta.
  */
 import { DateTime } from 'luxon';
+import type { CierreEstudio } from './entities/WhatsappConfig.entity';
 import { TZ_LOCAL } from './horario';
 
-export interface Cierre {
-  /** Primer día cerrado (YYYY-MM-DD, hora de Argentina). */
-  desde: string;
-  /** Último día cerrado, inclusive. */
-  hasta: string;
-  /** "por vacaciones", "por feriado"… */
-  motivo: string;
-}
+export type Cierre = CierreEstudio;
 
-export const CIERRES: Cierre[] = [
+/** Cierres cargados al pasar las fechas del código a la configuración (tanda 8). */
+export const CIERRES_INICIALES: Cierre[] = [
   // Mery, 13/11/2026: cierran del 31/12 al 11/1 inclusive (31/12 y 1/1 no cuentan como vacaciones del staff).
   { desde: '2026-12-31', hasta: '2027-01-11', motivo: 'por vacaciones' },
 ];
 
+/** Por defecto; se configura desde el panel (diasAvisoCierre). */
 export const AVISO_DIAS_ANTES = 60;
 
 const DIA = [
@@ -52,10 +49,7 @@ function diaYFecha(d: DateTime): string {
 }
 
 /** El cierre que incluye hoy, si hay. */
-export function cierreEn(
-  ahora: Date,
-  cierres: Cierre[] = CIERRES,
-): Cierre | null {
+export function cierreEn(ahora: Date, cierres: Cierre[]): Cierre | null {
   const hoy = hoyAR(ahora);
   return (
     cierres.find((c) => hoy >= fecha(c.desde) && hoy <= fecha(c.hasta)) ?? null
@@ -65,7 +59,8 @@ export function cierreEn(
 /** El cierre en curso o el próximo que empieza dentro de AVISO_DIAS_ANTES días. */
 export function cierreParaAvisar(
   ahora: Date,
-  cierres: Cierre[] = CIERRES,
+  cierres: Cierre[],
+  diasAntes = AVISO_DIAS_ANTES,
 ): Cierre | null {
   const hoy = hoyAR(ahora);
   return (
@@ -74,7 +69,7 @@ export function cierreParaAvisar(
       .find(
         (c) =>
           hoy <= fecha(c.hasta) &&
-          hoy >= fecha(c.desde).minus({ days: AVISO_DIAS_ANTES }),
+          hoy >= fecha(c.desde).minus({ days: diasAntes }),
       ) ?? null
   );
 }
@@ -104,12 +99,76 @@ export function textoCierre(c: Cierre, ahora: Date): string {
 export function aplicarCierre(
   texto: string,
   ahora: Date,
-  cierres: Cierre[] = CIERRES,
+  cierres: Cierre[],
+  diasAntes = AVISO_DIAS_ANTES,
 ): string {
   if (!texto.includes('{cierre}')) return texto;
-  const c = cierreParaAvisar(ahora, cierres);
+  const c = cierreParaAvisar(ahora, cierres, diasAntes);
   return texto.replace(
     /\s*\{cierre\}/g,
     c ? `\n\n📌 ${textoCierre(c, ahora)}` : '',
   );
+}
+
+/**
+ * Valida y normaliza los cierres que llegan del panel. Devuelve el error en
+ * castellano (para mostrar) o la lista limpia, ordenada por fecha.
+ */
+export function validarCierres(
+  entrada: unknown,
+): { ok: true; cierres: Cierre[] } | { ok: false; error: string } {
+  if (!Array.isArray(entrada))
+    return { ok: false, error: 'Los cierres tienen que ser una lista.' };
+  if (entrada.length > 30) return { ok: false, error: 'Máximo 30 cierres.' };
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const cierres: Cierre[] = [];
+  for (const [i, c] of entrada.entries()) {
+    const n = i + 1;
+    const { desde, hasta, motivo } = (c ?? {}) as Record<string, unknown>;
+    if (
+      typeof desde !== 'string' ||
+      !iso.test(desde) ||
+      !DateTime.fromISO(desde).isValid
+    ) {
+      return {
+        ok: false,
+        error: `Cierre ${n}: la fecha "desde" no es válida.`,
+      };
+    }
+    if (
+      typeof hasta !== 'string' ||
+      !iso.test(hasta) ||
+      !DateTime.fromISO(hasta).isValid
+    ) {
+      return {
+        ok: false,
+        error: `Cierre ${n}: la fecha "hasta" no es válida.`,
+      };
+    }
+    if (hasta < desde)
+      return {
+        ok: false,
+        error: `Cierre ${n}: "hasta" es anterior a "desde".`,
+      };
+    if (
+      DateTime.fromISO(hasta).diff(DateTime.fromISO(desde), 'days').days > 120
+    ) {
+      return {
+        ok: false,
+        error: `Cierre ${n}: no puede durar más de 120 días.`,
+      };
+    }
+    const m =
+      typeof motivo === 'string' && motivo.trim()
+        ? motivo.trim()
+        : 'por vacaciones';
+    if (m.length > 60)
+      return {
+        ok: false,
+        error: `Cierre ${n}: el motivo es muy largo (máximo 60).`,
+      };
+    cierres.push({ desde, hasta, motivo: m });
+  }
+  cierres.sort((a, b) => a.desde.localeCompare(b.desde));
+  return { ok: true, cierres };
 }

@@ -45,6 +45,10 @@ export class WhatsappConversacion {
   @Column({ type: 'smallint', default: 0 })
   noEntendidosSeguidos: number;
 
+  /** Mensajes seguidos fuera de tema (o intentos de manipular al bot). Pasado el límite, no contesta. */
+  @Column({ type: 'smallint', default: 0 })
+  fueraDeTemaSeguidos: number;
+
   /** El bot mostró el menú de "no entendí" y espera 1/2/3. */
   @Column({ type: 'boolean', default: false })
   esperandoOpcionMenu: boolean;

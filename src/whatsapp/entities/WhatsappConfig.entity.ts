@@ -28,6 +28,19 @@ export interface MensajesBot {
   botApagado: string;
   /** Derivación apagada (pruebas): lo que contesta cuando habría pasado la charla a recepción. */
   sinDerivacion: string;
+  /** Mensaje que no tiene nada que ver con el estudio, o intento de manipular al bot. */
+  fueraDeTema: string;
+  /** Durante un cierre, va después del aviso ("Estamos cerradas… Volvemos el…") al pasar la charla a recepción. */
+  cierreDerivacion: string;
+}
+
+/** Un cierre del estudio (vacaciones, feriado largo). Fechas YYYY-MM-DD, hora de Argentina. */
+export interface CierreEstudio {
+  desde: string;
+  /** Último día cerrado, inclusive. */
+  hasta: string;
+  /** "por vacaciones", "por feriado"… */
+  motivo: string;
 }
 
 /** Antes era "Por ahora te respondo yo 💕 ¿Te ayudo con alguna otra consulta?" (no guiaba). */
@@ -61,6 +74,9 @@ export const MENSAJES_POR_DEFECTO: MensajesBot = {
   despedida: 'Gracias por escribirnos 💕 Cualquier cosa, acá estamos.',
   sinDerivacion: SIN_DERIVACION_POR_DEFECTO,
   botApagado: 'Hola! Gracias por escribirnos 💕 En un ratito te responde recepción.',
+  fueraDeTema:
+    'Soy el asistente de Mery García 💕 Sólo puedo ayudarte con consultas sobre nuestros servicios, turnos y formaciones. ¿En qué te ayudo?',
+  cierreDerivacion: 'Apenas volvamos, recepción te responde.',
 };
 
 /** Martes a sábado de 10 a 18 (los sábados cierran a las 16; lo aclaran las respuestas). */
@@ -110,6 +126,21 @@ export class WhatsappConfig {
   /** Última tanda de respuestas de ejemplo agregada a la tabla (ver respuestas-v2.seed). */
   @Column({ type: 'integer', default: 1 })
   semillaVersion: number;
+
+  /** Cierres del estudio (vacaciones). El bot avisa con {cierre} y al pasar charlas a recepción. */
+  @Column({ type: 'jsonb', default: () => `'[]'` })
+  cierres: CierreEstudio[];
+
+  /** Desde cuántos días antes de un cierre se avisa con {cierre}. */
+  @Column({ type: 'smallint', default: 60 })
+  diasAvisoCierre: number;
+
+  /**
+   * Cuántas veces seguidas contesta a mensajes fuera de tema (o intentos de
+   * manipularlo). Después deja de contestar hasta que escriba algo del estudio.
+   */
+  @Column({ type: 'smallint', default: 2 })
+  limiteFueraDeTema: number;
 
   @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;

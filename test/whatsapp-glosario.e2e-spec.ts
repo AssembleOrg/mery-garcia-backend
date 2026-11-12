@@ -119,7 +119,7 @@ const ANTES_V6 = [
       'Texto que Mery editó desde el panel',
     );
     const cfg = await config.findOneByOrFail({ id: 'default' });
-    expect(cfg.semillaVersion).toBe(7);
+    expect(cfg.semillaVersion).toBe(8);
     expect(cfg.horario).toEqual(HORARIO_ESTUDIO);
 
     // Un segundo arranque no cambia nada.
@@ -168,7 +168,7 @@ const ANTES_V6 = [
     expect(por.get('TURNO_RESERVAR')!.respuesta).toContain('{cierre}');
     expect(
       (await config.findOneByOrFail({ id: 'default' })).semillaVersion,
-    ).toBe(7);
+    ).toBe(8);
   });
 
   it('horario editado por Mery: no se toca', async () => {
@@ -200,7 +200,53 @@ const ANTES_V6 = [
       'no es reembolsable',
     );
     const cfg = await config.findOneByOrFail({ id: 'default' });
-    expect(cfg.semillaVersion).toBe(7);
+    expect(cfg.semillaVersion).toBe(8);
     expect(cfg.horario).toEqual(HORARIO_ESTUDIO);
+  });
+
+  it('los cierres quedan en la configuración y se editan validados desde el panel', async () => {
+    await vaciar();
+    const servicio = await arrancar();
+    const cfg = await config.findOneByOrFail({ id: 'default' });
+    expect(cfg.cierres).toEqual([
+      { desde: '2026-12-31', hasta: '2027-01-11', motivo: 'por vacaciones' },
+    ]);
+    expect(cfg.diasAvisoCierre).toBe(60);
+    expect(cfg.limiteFueraDeTema).toBe(2);
+
+    await servicio.actualizar({
+      cierres: [{ desde: '2027-07-20', hasta: '2027-07-31', motivo: '' }],
+      diasAvisoCierre: 30,
+      limiteFueraDeTema: 3,
+      mensajes: { fueraDeTema: 'Sólo temas del estudio 💕' },
+    });
+    const editada = await config.findOneByOrFail({ id: 'default' });
+    expect(editada.cierres).toEqual([
+      { desde: '2027-07-20', hasta: '2027-07-31', motivo: 'por vacaciones' },
+    ]);
+    expect(editada.diasAvisoCierre).toBe(30);
+    expect(editada.limiteFueraDeTema).toBe(3);
+    expect(editada.mensajes.fueraDeTema).toBe('Sólo temas del estudio 💕');
+
+    await expect(
+      servicio.actualizar({
+        cierres: [{ desde: '2027-08-10', hasta: '2027-08-01' }],
+      }),
+    ).rejects.toThrow('anterior');
+    await expect(
+      servicio.actualizar({ limiteFueraDeTema: 0 }),
+    ).rejects.toThrow();
+    await expect(
+      servicio.crearRespuesta({
+        clave: 'FUERA_DE_TEMA',
+        titulo: 'x',
+        descripcion: 'x',
+        ejemplos: [],
+        respuesta: 'x',
+        derivaAPersona: false,
+        activa: true,
+        orden: 0,
+      }),
+    ).rejects.toThrow('reservada');
   });
 });

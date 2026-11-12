@@ -1,10 +1,11 @@
 import {
   aplicarCierre,
   Cierre,
-  CIERRES,
+  CIERRES_INICIALES,
   cierreEn,
   cierreParaAvisar,
   textoCierre,
+  validarCierres,
 } from './cierres';
 
 /** Mediodía en Argentina (UTC-3) de esa fecha. */
@@ -18,7 +19,7 @@ const VERANO: Cierre = {
 
 describe('cierres', () => {
   it('el cierre de verano 2026/27 está cargado', () => {
-    expect(CIERRES).toContainEqual(VERANO);
+    expect(CIERRES_INICIALES).toContainEqual(VERANO);
   });
 
   it('cierreEn: incluye el primer y el último día, en hora argentina', () => {
@@ -30,6 +31,19 @@ describe('cierres', () => {
     expect(cierreEn(new Date('2027-01-12T01:00:00Z'), [VERANO])).toEqual(
       VERANO,
     );
+  });
+
+  it('los días de aviso se configuran', () => {
+    expect(cierreParaAvisar(ar('2026-12-20'), [VERANO], 7)).toBeNull();
+    expect(cierreParaAvisar(ar('2026-12-24'), [VERANO], 7)).toEqual(VERANO);
+    expect(aplicarCierre('Hola{cierre}', ar('2026-12-20'), [VERANO], 7)).toBe(
+      'Hola',
+    );
+  });
+
+  it('sin cierres cargados no avisa nada', () => {
+    expect(aplicarCierre('Hola{cierre}', ar('2026-12-31'), [])).toBe('Hola');
+    expect(cierreEn(ar('2026-12-31'), [])).toBeNull();
   });
 
   it('avisa desde 60 días antes hasta el último día', () => {
@@ -73,5 +87,37 @@ describe('cierres', () => {
     expect(aplicarCierre('Sin marcador', ar('2026-11-13'), [VERANO])).toBe(
       'Sin marcador',
     );
+  });
+
+  it('valida y ordena los cierres del panel', () => {
+    expect(
+      validarCierres([
+        { desde: '2027-07-20', hasta: '2027-07-30', motivo: '' },
+        { desde: '2026-12-31', hasta: '2027-01-11', motivo: 'por vacaciones' },
+      ]),
+    ).toEqual({
+      ok: true,
+      cierres: [
+        { desde: '2026-12-31', hasta: '2027-01-11', motivo: 'por vacaciones' },
+        { desde: '2027-07-20', hasta: '2027-07-30', motivo: 'por vacaciones' },
+      ],
+    });
+    expect(validarCierres([])).toEqual({ ok: true, cierres: [] });
+  });
+
+  it.each([
+    [{}, 'una lista'],
+    [[{ desde: '31/12/2026', hasta: '2027-01-11' }], '"desde" no es válida'],
+    [[{ desde: '2026-12-31', hasta: '2027-02-30' }], '"hasta" no es válida'],
+    [[{ desde: '2027-01-11', hasta: '2026-12-31' }], 'anterior'],
+    [[{ desde: '2026-01-01', hasta: '2026-12-31' }], '120 días'],
+    [
+      [{ desde: '2026-12-31', hasta: '2027-01-11', motivo: 'x'.repeat(61) }],
+      'muy largo',
+    ],
+  ])('rechaza %j', (entrada, error) => {
+    const r = validarCierres(entrada);
+    expect(r.ok).toBe(false);
+    expect(!r.ok && r.error).toContain(error);
   });
 });

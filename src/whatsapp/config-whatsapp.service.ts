@@ -23,6 +23,7 @@ import {
 import { RESPUESTAS_V6, TEXTOS_ANTERIORES_V6, VERSION_SEMILLA_V6 } from './respuestas-v6.seed';
 import { RESPUESTAS_V7, TEXTOS_ANTERIORES_V7, VERSION_SEMILLA_V7 } from './respuestas-v7.seed';
 import { horarioCorregido, respuestasACorregir } from './tanda-glosario';
+import { CIERRES_INICIALES, validarCierres } from './cierres';
 import { horarioValido } from './horario';
 
 export interface RespuestaInput {
@@ -44,10 +45,19 @@ export interface ConfigInput {
   mensajes?: Partial<MensajesBot>;
   menuOpcion1?: string;
   menuOpcion2?: string;
+  /** Cierres del estudio (vacaciones): [{ desde, hasta, motivo }], fechas YYYY-MM-DD. */
+  cierres?: unknown;
+  /** Desde cuántos días antes se avisa del cierre (0 a 180). */
+  diasAvisoCierre?: number;
+  /** Cuántas veces seguidas contesta fuera de tema antes de dejar de contestar (1 a 10). */
+  limiteFueraDeTema?: number;
 }
 
+/** Tanda 8: las fechas de cierre pasan del código a la configuración (editables desde el panel). */
+const VERSION_CONFIG_CIERRES = 8;
+
 const CLAVE_VALIDA = /^[A-Z][A-Z0-9_]{1,63}$/;
-const RESERVADAS = new Set(['NO_SE', 'PERSONA']);
+const RESERVADAS = new Set(['NO_SE', 'PERSONA', 'FUERA_DE_TEMA']);
 
 const VERSION_TEXTOS_RECEPCION = 3;
 /** Frases exactas a reemplazar en los textos guardados (en orden). */
@@ -93,6 +103,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.agregarTanda(VERSION_SEMILLA_V5, RESPUESTAS_V5);
       await this.tandaGlosario();
       await this.tandaCierres();
+      await this.cierresAConfiguracion();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -142,6 +153,25 @@ export class ConfigWhatsappService implements OnModuleInit {
         }
       }
       fila.mensajes = { ...fila.mensajes, ...limpios };
+    }
+    if (input.cierres !== undefined) {
+      const r = validarCierres(input.cierres);
+      if (!r.ok) throw new BadRequestException(r.error);
+      fila.cierres = r.cierres;
+    }
+    if (input.diasAvisoCierre !== undefined) {
+      const n = Number(input.diasAvisoCierre);
+      if (!Number.isInteger(n) || n < 0 || n > 180) {
+        throw new BadRequestException('Días de aviso del cierre: un número entre 0 y 180.');
+      }
+      fila.diasAvisoCierre = n;
+    }
+    if (input.limiteFueraDeTema !== undefined) {
+      const n = Number(input.limiteFueraDeTema);
+      if (!Number.isInteger(n) || n < 1 || n > 10) {
+        throw new BadRequestException('Respuestas fuera de tema seguidas: un número entre 1 y 10.');
+      }
+      fila.limiteFueraDeTema = n;
     }
     for (const campo of ['menuOpcion1', 'menuOpcion2'] as const) {
       const v = input[campo];
@@ -269,6 +299,21 @@ export class ConfigWhatsappService implements OnModuleInit {
     for (const c of cambios) await this.respuestas.update({ id: c.id }, { respuesta: c.respuesta });
     await this.agregarTanda(VERSION_SEMILLA_V7, RESPUESTAS_V7);
     this.logger.log(`Tanda 7: ${cambios.length} respuestas con aviso de cierre (${cambios.map((c) => c.clave).join(', ') || 'ninguna'})`);
+  }
+
+  /**
+   * Una sola vez (versión 8): las fechas de cierre que estaban en el código pasan
+   * a la configuración, si todavía no hay ninguna cargada.
+   */
+  private async cierresAConfiguracion(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_CONFIG_CIERRES) return;
+    const cargar = !(cfg.cierres ?? []).length;
+    await this.configRepo.update(
+      { id: 'default' },
+      { semillaVersion: VERSION_CONFIG_CIERRES, ...(cargar ? { cierres: CIERRES_INICIALES } : {}) },
+    );
+    this.logger.log(`Tanda 8: cierres en la configuración${cargar ? ` (${CIERRES_INICIALES.length} cargados)` : ''}`);
   }
 
   /** Agrega una sola vez una tanda de respuestas, sin pisar claves existentes. */

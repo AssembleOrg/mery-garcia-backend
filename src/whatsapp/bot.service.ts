@@ -10,7 +10,7 @@ import { MensajesService } from './mensajes.service';
 import { CentralModoService } from './central/central-modo.service';
 import { NotificacionesService } from './notificaciones.service';
 import { WhatsappEventosService } from './whatsapp-eventos.service';
-import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
+import { CLAVE_FUERA_DE_TEMA, CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
 import { esAcuse, esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
 import { cierreEn, textoCierre } from './cierres';
@@ -179,7 +179,7 @@ export class BotService {
     ) {
       await this.conversaciones.update(
         { id: conv.id },
-        { estado: EstadoConversacion.BOT, motivoEspera: null, esperandoDesde: null, noEntendidosSeguidos: 0, esperandoOpcionMenu: false },
+        { estado: EstadoConversacion.BOT, motivoEspera: null, esperandoDesde: null, noEntendidosSeguidos: 0, fueraDeTemaSeguidos: 0, esperandoOpcionMenu: false },
       );
       conv.estado = EstadoConversacion.BOT;
       conv.noEntendidosSeguidos = 0;
@@ -273,6 +273,7 @@ export class BotService {
         motivoEspera: null,
         esperandoDesde: null,
         noEntendidosSeguidos: 0,
+        fueraDeTemaSeguidos: 0,
         esperandoOpcionMenu: false,
         avisoInactividadAt: null,
         vencidaAt: new Date(),
@@ -337,6 +338,7 @@ export class BotService {
           motivoEspera: null,
           esperandoDesde: null,
           noEntendidosSeguidos: 0,
+          fueraDeTemaSeguidos: 0,
           esperandoOpcionMenu: false,
           avisoInactividadAt: null,
         },
@@ -492,6 +494,21 @@ export class BotService {
         await this.derivar(conv, MotivoEspera.PIDIO_PERSONA, [cfg.mensajes.derivacion]);
         return;
       }
+      if (clave === CLAVE_FUERA_DE_TEMA) {
+        // Nada que ver con el estudio, o un intento de manipular al bot: respuesta fija,
+        // nunca pasa a recepción. Si insiste, deja de contestar hasta que escriba algo del estudio.
+        const seguidos = (conv.fueraDeTemaSeguidos ?? 0) + 1;
+        await this.conversaciones.update(
+          { id: conv.id },
+          { fueraDeTemaSeguidos: seguidos, noEntendidosSeguidos: 0, esperandoOpcionMenu: false },
+        );
+        if (seguidos > (cfg.limiteFueraDeTema ?? 2)) {
+          this.logger.log(`Fuera de tema ${seguidos} veces seguidas en ${conv.id}: no contesta`);
+          return;
+        }
+        await this.mensajes.enviarTexto(conv, await this.personalizar(conv, cfg.mensajes.fueraDeTema), AutorMensaje.BOT, null, CLAVE_FUERA_DE_TEMA);
+        return;
+      }
       if (clave === CLAVE_NO_SE) {
         if (conv.noEntendidosSeguidos + 1 >= 2) {
           await this.derivar(conv, MotivoEspera.NO_ENTENDIO, [cfg.mensajes.derivacion]);
@@ -499,7 +516,7 @@ export class BotService {
         }
         await this.conversaciones.update(
           { id: conv.id },
-          { noEntendidosSeguidos: conv.noEntendidosSeguidos + 1, esperandoOpcionMenu: true },
+          { noEntendidosSeguidos: conv.noEntendidosSeguidos + 1, esperandoOpcionMenu: true, fueraDeTemaSeguidos: 0 },
         );
         await this.mensajes.enviarTexto(conv, await this.personalizar(conv, cfg.mensajes.noEntendi), AutorMensaje.BOT);
         return;
@@ -531,10 +548,13 @@ export class BotService {
     fueraDeHorario: string,
     horario: { dias: number[]; desde: string; hasta: string },
   ): Promise<void> {
-    await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, esperandoOpcionMenu: false });
+    await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, fueraDeTemaSeguidos: 0, esperandoOpcionMenu: false });
     // Si la clienta sólo saludó en su primer mensaje, la presentación + bienvenida reemplaza al saludo.
     // Precios y listas en vivo ({formaciones}, {servicios:…}) y el horario de atención.
-    const conDatos = (await this.catalogo.completar(respuesta)).replace(/\{horario\}/g, describirHorario(horario));
+    const cfg = await this.config.obtener();
+    const conDatos = (
+      await this.catalogo.completar(respuesta, { cierres: cfg.cierres, diasAvisoCierre: cfg.diasAvisoCierre })
+    ).replace(/\{horario\}/g, describirHorario(horario));
     const texto = await this.personalizar(conv, conDatos, { soloSaludo: clave === 'SALUDO' });
     await this.mensajes.enviarTexto(conv, texto, AutorMensaje.BOT, null, clave);
     if (derivaAPersona) {
@@ -660,7 +680,7 @@ ${cuerpo}`, nombre);
     // si iba a avisar el pase, contesta otra cosa. Con el bot apagado sí deriva.
     if (!cfg.derivacionActiva && motivo !== MotivoEspera.BOT_APAGADO) {
       this.logger.log(`Derivación apagada: ${conv.id} (${motivo}) sigue con el bot`);
-      await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, esperandoOpcionMenu: false });
+      await this.conversaciones.update({ id: conv.id }, { noEntendidosSeguidos: 0, fueraDeTemaSeguidos: 0, esperandoOpcionMenu: false });
       if (textos.length) {
         await this.mensajes.enviarTexto(conv, await this.personalizar(conv, cfg.mensajes.sinDerivacion), AutorMensaje.BOT);
       }
@@ -674,6 +694,7 @@ ${cuerpo}`, nombre);
         motivoEspera: motivo,
         esperandoDesde: new Date(),
         noEntendidosSeguidos: 0,
+        fueraDeTemaSeguidos: 0,
         esperandoOpcionMenu: false,
       },
     );
@@ -689,11 +710,11 @@ ${cuerpo}`, nombre);
       await this.mensajes.enviarTexto(conv, await this.personalizar(conv, t, { presentar }), AutorMensaje.BOT);
     }
     // Durante un cierre (vacaciones) se avisa eso y cuándo vuelven, no el horario de siempre.
-    const cierre = cierreEn(new Date());
+    const cierre = cierreEn(new Date(), cfg.cierres ?? []);
     if (cierre) {
       await this.mensajes.enviarTexto(
         conv,
-        `${textoCierre(cierre, new Date())} Apenas volvamos, recepción te responde.`,
+        `${textoCierre(cierre, new Date())} ${cfg.mensajes.cierreDerivacion ?? ''}`.trim(),
         AutorMensaje.BOT,
       );
     } else if (!estaAbierto(horario)) {

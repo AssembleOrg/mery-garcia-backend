@@ -196,6 +196,7 @@ export class BandejaService {
         motivoEspera: null,
         esperandoDesde: null,
         noEntendidosSeguidos: 0,
+        fueraDeTemaSeguidos: 0,
         esperandoOpcionMenu: false,
         avisoInactividadAt: null,
       },
