@@ -66,7 +66,8 @@ export const RESPUESTAS_SEMILLA: RespuestaSemilla[] = [
     respuesta:
       'Hola! Si necesitás reprogramar tu turno, podés hacerlo vos misma desde nuestra web utilizando el código de reserva que recibiste por mail al momento de agendar.\n' +
       'Solo ingresá a la opción "Gestionar mi reserva", colocá ese código y vas a poder cambiar la fecha y el horario según la disponibilidad.\n' +
-      'Si no encontrás el correo o necesitás una mano, escribinos y con gusto te ayudamos. 💕',
+      'Tiene que ser con *48 hs* de anticipación como mínimo, y se puede reprogramar *una sola vez* sin perder la seña.\n' +
+      'Si te falta menos de 48 hs, no encontrás el correo o necesitás una mano, escribinos y te ayuda recepción. 💕',
   },
   {
     clave: 'TATTOO_CONSULTA_TURNO',
@@ -86,9 +87,11 @@ export const RESPUESTAS_SEMILLA: RespuestaSemilla[] = [
     respuesta:
       'Hola! como estas? 💖\n' +
       'Si nunca te realizaste ningun servicio de cosmetic tattoo en cejas, lo primero que debes hacer es tomar un turno de consulta OBLIGATORIA previa. En esa consulta te van a saber explicar bien de que trata el servicio, cuidados, valores y te van a realizar un maquillaje personalizado hiperrealista de como quedaría el servicio de Nanoblading.\n\n' +
-      'El valor de la consulta es de $80.000 y los turnos se toman únicamente por nuestra web ' +
+      '{servicios:nanoblading [consulta obligatoria] sin}\n' +
+      'Los turnos se toman únicamente por nuestra web ' +
       WEB_TATTOO +
-      ' (Consulta obligatoria SIN trabajo previo). Por el momento los unicos dias de consulta son Martes y Jueves a las 12hs.',
+      ' (Consulta obligatoria SIN trabajo previo). Por el momento los días de consulta son {dias:nanoblading [consulta obligatoria] sin}.\n\n' +
+      'Si ya tenés un trabajo previo en cejas (de otro lugar o viejo), es otra consulta: contame y te explico 💕',
   },
   {
     clave: 'MICROBLADING',
@@ -119,7 +122,7 @@ export const RESPUESTAS_SEMILLA: RespuestaSemilla[] = [
     ejemplos: ['hola te hago una consulta. Que es refill?', 'en qué consiste el brow refill?'],
     respuesta:
       'Hola! como estas?\n' +
-      'El refill es un tinte superficial, que tiñe la piel de tus cejas creando así un efecto de densidad, hiper pobladas y realistas. La duración es de aproximadamente 20 días.',
+      'El refill es un tinte superficial, que tiñe la piel de tus cejas creando así un efecto de densidad, hiper pobladas y realistas. La duración es de aproximadamente 15 a 20 días.',
   },
   {
     clave: 'HENNA',
@@ -155,9 +158,10 @@ export const RESPUESTAS_SEMILLA: RespuestaSemilla[] = [
     respuesta:
       'Hola! buenas ❤️\n' +
       'Si nunca te realizaste ningun servicio de cosmetic tattoo en labios, lo primero que debes hacer es tomar un turno de consulta OBLIGATORIA previa. En esa consulta te van a saber explicar bien de que trata el servicio, cuidados, valores y te van a realizar un maquillaje personalizado hiperrealista de como quedaría el servicio de Lip Blush.\n\n' +
-      'El valor de la consulta es de $50.000 y los turnos se toman únicamente por nuestra web ' +
+      '{servicios:lip blush [consulta obligatoria] sin}\n' +
+      'Los turnos se toman únicamente por nuestra web ' +
       WEB_TATTOO +
-      ' (Consulta obligatoria SIN trabajo previo). Por el momento los unicos dias de consulta son los viernes a las 12hs.',
+      ' (Consulta obligatoria SIN trabajo previo). Por el momento los días de consulta son {dias:lip blush [consulta obligatoria] sin}.',
   },
   {
     clave: 'LABIOS_DELINEADO',

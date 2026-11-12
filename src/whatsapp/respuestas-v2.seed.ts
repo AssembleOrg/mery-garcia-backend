@@ -47,7 +47,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       '{formaciones}\n\n' +
       'La mayoría son 100% online y autogestivas, con acceso ilimitado por 1 año. Toda la info y la inscripción: ' +
       WEB_FORMACIONES +
-      '\n\nSi me decís cuál te interesa, te cuento cómo es.',
+      '\n\nSi me decís cuál te interesa, te cuento cómo es. Para consultas de formaciones también podés escribirle a *MG Formaciones*: https://wa.me/5491153336627',
   },
   {
     clave: 'FORMACION_PRECIO',
@@ -467,7 +467,9 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
     respuesta:
       'Al reservar un turno desde la web se abona una *seña* online, que después se descuenta del valor del servicio. ' +
       'El valor de la seña de cada servicio lo ves al reservar en ' +
-      WEB_TURNOS,
+      WEB_TURNOS +
+      '\n\nLa seña *no es reembolsable*: si no podés venir, reprogramá con 48 hs de anticipación para no perderla. ' +
+      'La consulta previa no cuenta como seña: tiene su propio valor y no se descuenta del servicio.',
   },
   {
     clave: 'TURNO_CANCELAR',
@@ -497,7 +499,9 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       'cómo llego?',
     ],
     respuesta:
-      'Estamos en *Av. Melián 3646 PB 1, CABA* 📍 Nuestro horario de atención es {horario}. Los turnos se reservan desde ' +
+      'Estamos en *Av. Melián 3646, PB 1 (timbre 1), Saavedra, CABA* 📍 entre Larralde y Jaramillo. Es nuestra única sede.\n' +
+      'Nuestro horario de atención es {horario} (los sábados, hasta las 16 hs). No contamos con estacionamiento, así que te recomendamos venir con tiempo.\n' +
+      'Los turnos se reservan desde ' +
       WEB_TURNOS,
   },
   {
@@ -511,7 +515,8 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       'hasta qué hora atienden?',
     ],
     respuesta:
-      'Nuestro horario de atención es {horario}. Los turnos se reservan desde la web, donde ves todas las disponibilidades: ' +
+      'Nuestro horario de atención es {horario}. Los sábados atendemos hasta las 16 hs. Lunes y domingos no abrimos.\n' +
+      'Los turnos se reservan desde la web, donde ves todas las disponibilidades: ' +
       WEB_TURNOS,
   },
   {

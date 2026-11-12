@@ -63,10 +63,11 @@ export const MENSAJES_POR_DEFECTO: MensajesBot = {
   botApagado: 'Hola! Gracias por escribirnos 💕 En un ratito te responde recepción.',
 };
 
+/** Martes a sábado de 10 a 18 (los sábados cierran a las 16; lo aclaran las respuestas). */
 export const HORARIO_POR_DEFECTO: HorarioAtencion = {
-  dias: [1, 2, 3, 4, 5, 6],
+  dias: [2, 3, 4, 5, 6],
   desde: '10:00',
-  hasta: '19:00',
+  hasta: '18:00',
 };
 
 /** Una sola fila. */

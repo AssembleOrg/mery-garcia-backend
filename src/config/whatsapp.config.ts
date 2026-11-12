@@ -27,6 +27,10 @@ export default registerAs('whatsapp', () => ({
     serviciosTurnosUrl:
       process.env.WHATSAPP_SERVICIOS_TURNOS_URL ??
       'https://mery-booking-backend-production.up.railway.app/api/services/visible/all',
+    /** Disponibilidad pública por profesional y servicio ({agenda:…}, {dias:…}). */
+    disponibilidadTurnosUrl:
+      process.env.WHATSAPP_DISPONIBILIDAD_TURNOS_URL ??
+      'https://mery-booking-backend-production.up.railway.app/api/bookings/availability',
   },
   /**
    * Central de chatbots (console-central). Opcional: sin estas tres variables

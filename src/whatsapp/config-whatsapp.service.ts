@@ -20,6 +20,8 @@ import {
   VERSION_SEMILLA_V4,
   VERSION_SEMILLA_V5,
 } from './respuestas-v2.seed';
+import { RESPUESTAS_V6, TEXTOS_ANTERIORES_V6, VERSION_SEMILLA_V6 } from './respuestas-v6.seed';
+import { horarioCorregido, respuestasACorregir } from './tanda-glosario';
 import { horarioValido } from './horario';
 
 export interface RespuestaInput {
@@ -60,6 +62,14 @@ const CAMBIOS_DE_TEXTO: [string, string][] = [
   ['Te paso con alguien del equipo', 'Te paso con recepción'],
 ];
 
+const TODAS_LAS_SEMILLAS: RespuestaSemilla[] = [
+  ...RESPUESTAS_SEMILLA,
+  ...RESPUESTAS_V2,
+  ...RESPUESTAS_V4,
+  ...RESPUESTAS_V5,
+  ...RESPUESTAS_V6,
+];
+
 @Injectable()
 export class ConfigWhatsappService implements OnModuleInit {
   private readonly logger = new Logger(ConfigWhatsappService.name);
@@ -79,6 +89,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.renombrarTextos();
       await this.tandaTurnos();
       await this.agregarTanda(VERSION_SEMILLA_V5, RESPUESTAS_V5);
+      await this.tandaGlosario();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -215,12 +226,32 @@ export class ConfigWhatsappService implements OnModuleInit {
   private async sembrarSiEstaVacio(): Promise<void> {
     if ((await this.respuestas.count()) > 0) return;
     await this.respuestas.save(
-      [...RESPUESTAS_SEMILLA, ...RESPUESTAS_V2, ...RESPUESTAS_V4, ...RESPUESTAS_V5].map((s, i) =>
+      TODAS_LAS_SEMILLAS.map((s, i) =>
         this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: i }),
       ),
     );
-    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V5 });
-    this.logger.log(`Respuestas iniciales cargadas: ${RESPUESTAS_SEMILLA.length + RESPUESTAS_V2.length + RESPUESTAS_V4.length + RESPUESTAS_V5.length}`);
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V6 });
+    this.logger.log(`Respuestas iniciales cargadas: ${TODAS_LAS_SEMILLAS.length}`);
+  }
+
+  /**
+   * Una sola vez (versión 6, glosario de recepción): claves nuevas, las
+   * respuestas que quedaron viejas pasan al texto nuevo (sólo si nadie las
+   * editó) y el horario deja de decir lunes y hasta las 19 (si sigue el de antes).
+   */
+  private async tandaGlosario(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_SEMILLA_V6) return;
+    const textos = new Map(TODAS_LAS_SEMILLAS.map((s) => [s.clave, s.respuesta]));
+    const cambios = respuestasACorregir(await this.respuestas.find(), TEXTOS_ANTERIORES_V6, textos);
+    for (const c of cambios) await this.respuestas.update({ id: c.id }, { respuesta: c.respuesta });
+    const horario = horarioCorregido(cfg.horario);
+    if (horario) await this.configRepo.update({ id: 'default' }, { horario });
+    await this.agregarTanda(VERSION_SEMILLA_V6, RESPUESTAS_V6);
+    this.logger.log(
+      `Tanda 6: ${cambios.length} respuestas actualizadas (${cambios.map((c) => c.clave).join(', ') || 'ninguna'})` +
+        (horario ? ', horario pasado a martes a sábado 10–18' : ''),
+    );
   }
 
   /** Agrega una sola vez una tanda de respuestas, sin pisar claves existentes. */
