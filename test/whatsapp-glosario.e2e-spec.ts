@@ -23,6 +23,10 @@ import {
   RESPUESTAS_V6,
   TEXTOS_ANTERIORES_V6,
 } from 'src/whatsapp/respuestas-v6.seed';
+import {
+  RESPUESTAS_V7,
+  TEXTOS_ANTERIORES_V7,
+} from 'src/whatsapp/respuestas-v7.seed';
 import { HORARIO_ESTUDIO } from 'src/whatsapp/tanda-glosario';
 
 const URL = process.env.MERY_TEST_POSTGRES_URL;
@@ -33,7 +37,7 @@ const ANTES_V6 = [
   ...RESPUESTAS_V5,
 ];
 
-(URL ? describe : describe.skip)('tanda 6 del bot (e2e)', () => {
+(URL ? describe : describe.skip)('tandas 6 y 7 del bot (e2e)', () => {
   let ds: DataSource;
   let respuestas: Repository<WhatsappRespuesta>;
   let config: Repository<WhatsappConfig>;
@@ -100,18 +104,22 @@ const ANTES_V6 = [
 
     const filas = await respuestas.find();
     const por = new Map(filas.map((r) => [r.clave, r]));
-    expect(filas).toHaveLength(ANTES_V6.length + RESPUESTAS_V6.length);
+    expect(filas).toHaveLength(
+      ANTES_V6.length + RESPUESTAS_V6.length + RESPUESTAS_V7.length,
+    );
     for (const s of RESPUESTAS_V6) expect(por.get(s.clave)?.activa).toBe(true);
     expect(por.get('SENA')!.respuesta).toContain('no es reembolsable');
     expect(por.get('NANOBLADING_QUIERO')!.respuesta).toContain(
       '{dias:nanoblading [consulta obligatoria] sin}',
     );
     expect(por.get('HORARIOS')!.respuesta).toContain('hasta las 16 hs');
+    expect(por.get('HORARIOS')!.respuesta).toContain('{cierre}');
+    expect(por.get('VACACIONES')?.activa).toBe(true);
     expect(por.get('UBICACION')!.respuesta).toBe(
       'Texto que Mery editó desde el panel',
     );
     const cfg = await config.findOneByOrFail({ id: 'default' });
-    expect(cfg.semillaVersion).toBe(6);
+    expect(cfg.semillaVersion).toBe(7);
     expect(cfg.horario).toEqual(HORARIO_ESTUDIO);
 
     // Un segundo arranque no cambia nada.
@@ -129,6 +137,38 @@ const ANTES_V6 = [
       ]),
     );
     expect(despues).toBe(antes);
+  });
+
+  it('base como la de producción hoy (versión 6): suma VACACIONES y el aviso de cierre', async () => {
+    await vaciar();
+    await config.save(
+      config.create({
+        id: 'default',
+        botActivo: true,
+        horario: HORARIO_ESTUDIO,
+        mensajes: {} as WhatsappConfig['mensajes'],
+        semillaVersion: 6,
+      }),
+    );
+    await respuestas.save(
+      [...ANTES_V6, ...RESPUESTAS_V6].map((s, i) =>
+        respuestas.create({
+          ...s,
+          respuesta: TEXTOS_ANTERIORES_V7[s.clave] ?? s.respuesta,
+          derivaAPersona: Boolean(s.derivaAPersona),
+          activa: true,
+          orden: i,
+        }),
+      ),
+    );
+    await arrancar();
+    const por = new Map((await respuestas.find()).map((r) => [r.clave, r]));
+    expect(por.get('VACACIONES')?.activa).toBe(true);
+    expect(por.get('HORARIOS')!.respuesta).toContain('{cierre}');
+    expect(por.get('TURNO_RESERVAR')!.respuesta).toContain('{cierre}');
+    expect(
+      (await config.findOneByOrFail({ id: 'default' })).semillaVersion,
+    ).toBe(7);
   });
 
   it('horario editado por Mery: no se toca', async () => {
@@ -149,16 +189,18 @@ const ANTES_V6 = [
     );
   });
 
-  it('base vacía: carga todas las respuestas ya corregidas y queda en versión 6', async () => {
+  it('base vacía: carga todas las respuestas ya corregidas y queda en la última versión', async () => {
     await vaciar();
     await arrancar();
     const filas = await respuestas.find();
-    expect(filas).toHaveLength(ANTES_V6.length + RESPUESTAS_V6.length);
+    expect(filas).toHaveLength(
+      ANTES_V6.length + RESPUESTAS_V6.length + RESPUESTAS_V7.length,
+    );
     expect(filas.find((r) => r.clave === 'SENA')!.respuesta).toContain(
       'no es reembolsable',
     );
     const cfg = await config.findOneByOrFail({ id: 'default' });
-    expect(cfg.semillaVersion).toBe(6);
+    expect(cfg.semillaVersion).toBe(7);
     expect(cfg.horario).toEqual(HORARIO_ESTUDIO);
   });
 });

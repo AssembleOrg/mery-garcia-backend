@@ -515,7 +515,7 @@ export const RESPUESTAS_V2: RespuestaSemilla[] = [
       'hasta qué hora atienden?',
     ],
     respuesta:
-      'Nuestro horario de atención es {horario}. Los sábados atendemos hasta las 16 hs. Lunes y domingos no abrimos.\n' +
+      'Nuestro horario de atención es {horario}. Los sábados atendemos hasta las 16 hs. Lunes y domingos no abrimos.{cierre}\n\n' +
       'Los turnos se reservan desde la web, donde ves todas las disponibilidades: ' +
       WEB_TURNOS,
   },
@@ -572,7 +572,7 @@ export const RESPUESTAS_V4: RespuestaSemilla[] = [
       WEB_ESTILISMO +
       '\n• Cosmetic tattoo: ' +
       WEB_TATTOO +
-      '\n\nLos servicios que hace Mery figuran como *By Mery García*. Si es tu primera vez con cosmetic tattoo, primero va la consulta previa obligatoria.',
+      '\n\nLos servicios que hace Mery figuran como *By Mery García*. Si es tu primera vez con cosmetic tattoo, primero va la consulta previa obligatoria.{cierre}',
   },
 ];
 

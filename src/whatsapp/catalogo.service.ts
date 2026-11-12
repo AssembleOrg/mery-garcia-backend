@@ -8,6 +8,7 @@ import {
   textoAgendaProfesionales,
   textoDiasDeLaSemana,
 } from './agenda';
+import { aplicarCierre } from './cierres';
 
 /** Una formación del portal (GET /api/public/catalog). */
 interface Formacion {
@@ -57,6 +58,7 @@ const DIAS_SEMANA = 28;
  * "{formaciones}", "{formacion:slug}", "{servicios:patron|patron}",
  * "{agenda:patron}" (próximos días de cada profesional que hace el servicio) y
  * "{dias:patron}" (días de la semana y horas en que se da el servicio).
+ * "{cierre}" lo resuelve aplicarCierre (cierres.ts).
  */
 const MARCADOR =
   /\{(formaciones|formacion:[a-z0-9-]+|(?:servicios|agenda|dias):[^{}]+)\}/g;
@@ -128,7 +130,9 @@ export class CatalogoService {
   ) {}
 
   /** Reemplaza los marcadores de datos en vivo del texto. */
-  async completar(texto: string): Promise<string> {
+  async completar(textoOriginal: string): Promise<string> {
+    // {cierre}: aviso de vacaciones/cierre sólo cuando corresponde (ver cierres.ts).
+    const texto = aplicarCierre(textoOriginal, new Date());
     const marcadores = [...new Set(texto.match(MARCADOR) ?? [])];
     if (!marcadores.length) return texto;
     let salida = texto;

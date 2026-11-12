@@ -13,6 +13,7 @@ import { WhatsappEventosService } from './whatsapp-eventos.service';
 import { CLAVE_NO_SE, CLAVE_PERSONA, ClasificadorService, TurnoPrevio } from './clasificador.service';
 import { esAcuse, esAtaque, permitirMensaje, pidePersona, recortar } from './guardia';
 import { describirHorario, estaAbierto } from './horario';
+import { cierreEn, textoCierre } from './cierres';
 import { completar, primerNombre, sinSaludo } from './personalizar';
 import { CatalogoService } from './catalogo.service';
 import { aConversacionDto, etiquetaContacto } from './whatsapp.dto';
@@ -687,7 +688,15 @@ ${cuerpo}`, nombre);
       const presentar = i === 0 && motivo !== MotivoEspera.BOT_APAGADO;
       await this.mensajes.enviarTexto(conv, await this.personalizar(conv, t, { presentar }), AutorMensaje.BOT);
     }
-    if (!estaAbierto(horario)) {
+    // Durante un cierre (vacaciones) se avisa eso y cuándo vuelven, no el horario de siempre.
+    const cierre = cierreEn(new Date());
+    if (cierre) {
+      await this.mensajes.enviarTexto(
+        conv,
+        `${textoCierre(cierre, new Date())} Apenas volvamos, recepción te responde.`,
+        AutorMensaje.BOT,
+      );
+    } else if (!estaAbierto(horario)) {
       const aviso = textoFuera.replace('{horario}', describirHorario(horario));
       await this.mensajes.enviarTexto(conv, aviso, AutorMensaje.BOT);
     }

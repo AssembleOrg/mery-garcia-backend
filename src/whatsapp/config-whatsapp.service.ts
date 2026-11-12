@@ -21,6 +21,7 @@ import {
   VERSION_SEMILLA_V5,
 } from './respuestas-v2.seed';
 import { RESPUESTAS_V6, TEXTOS_ANTERIORES_V6, VERSION_SEMILLA_V6 } from './respuestas-v6.seed';
+import { RESPUESTAS_V7, TEXTOS_ANTERIORES_V7, VERSION_SEMILLA_V7 } from './respuestas-v7.seed';
 import { horarioCorregido, respuestasACorregir } from './tanda-glosario';
 import { horarioValido } from './horario';
 
@@ -68,6 +69,7 @@ const TODAS_LAS_SEMILLAS: RespuestaSemilla[] = [
   ...RESPUESTAS_V4,
   ...RESPUESTAS_V5,
   ...RESPUESTAS_V6,
+  ...RESPUESTAS_V7,
 ];
 
 @Injectable()
@@ -90,6 +92,7 @@ export class ConfigWhatsappService implements OnModuleInit {
       await this.tandaTurnos();
       await this.agregarTanda(VERSION_SEMILLA_V5, RESPUESTAS_V5);
       await this.tandaGlosario();
+      await this.tandaCierres();
     } catch (error) {
       this.logger.warn(`No se pudo inicializar la config de WhatsApp: ${(error as Error).message}`);
     }
@@ -230,7 +233,7 @@ export class ConfigWhatsappService implements OnModuleInit {
         this.respuestas.create({ ...s, derivaAPersona: Boolean(s.derivaAPersona), activa: true, orden: i }),
       ),
     );
-    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V6 });
+    await this.configRepo.update({ id: 'default' }, { semillaVersion: VERSION_SEMILLA_V7 });
     this.logger.log(`Respuestas iniciales cargadas: ${TODAS_LAS_SEMILLAS.length}`);
   }
 
@@ -252,6 +255,20 @@ export class ConfigWhatsappService implements OnModuleInit {
       `Tanda 6: ${cambios.length} respuestas actualizadas (${cambios.map((c) => c.clave).join(', ') || 'ninguna'})` +
         (horario ? ', horario pasado a martes a sábado 10–18' : ''),
     );
+  }
+
+  /**
+   * Una sola vez (versión 7, cierres): la clave VACACIONES y el marcador
+   * {cierre} en horarios y turnos (sólo si nadie editó esas respuestas).
+   */
+  private async tandaCierres(): Promise<void> {
+    const cfg = await this.obtener();
+    if ((cfg.semillaVersion ?? 1) >= VERSION_SEMILLA_V7) return;
+    const textos = new Map(TODAS_LAS_SEMILLAS.map((s) => [s.clave, s.respuesta]));
+    const cambios = respuestasACorregir(await this.respuestas.find(), TEXTOS_ANTERIORES_V7, textos);
+    for (const c of cambios) await this.respuestas.update({ id: c.id }, { respuesta: c.respuesta });
+    await this.agregarTanda(VERSION_SEMILLA_V7, RESPUESTAS_V7);
+    this.logger.log(`Tanda 7: ${cambios.length} respuestas con aviso de cierre (${cambios.map((c) => c.clave).join(', ') || 'ninguna'})`);
   }
 
   /** Agrega una sola vez una tanda de respuestas, sin pisar claves existentes. */
